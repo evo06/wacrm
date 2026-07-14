@@ -43,6 +43,7 @@ describe('parseGeneration', () => {
     expect(parseGeneration('Hello there')).toEqual({
       text: 'Hello there',
       handoff: false,
+      hotLead: false,
       usage: null,
     })
   })
@@ -51,11 +52,13 @@ describe('parseGeneration', () => {
     expect(parseGeneration('[[HANDOFF]]')).toEqual({
       text: '',
       handoff: true,
+      hotLead: false,
       usage: null,
     })
     expect(parseGeneration('Let me get a human [[HANDOFF]]')).toEqual({
       text: 'Let me get a human',
       handoff: true,
+      hotLead: false,
       usage: null,
     })
   })
@@ -65,7 +68,17 @@ describe('parseGeneration', () => {
     expect(parseGeneration('Hi', usage)).toEqual({
       text: 'Hi',
       handoff: false,
+      hotLead: false,
       usage,
+    })
+  })
+
+  it('detects a hot lead as a distinct handoff reason', () => {
+    expect(parseGeneration('[[HOT_LEAD]]')).toEqual({
+      text: '',
+      handoff: true,
+      hotLead: true,
+      usage: null,
     })
   })
 })
@@ -89,6 +102,7 @@ describe('generateReply — OpenAI', () => {
     expect(res).toEqual({
       text: 'Sure — happy to help!',
       handoff: false,
+      hotLead: false,
       usage: { promptTokens: 42, completionTokens: 8, totalTokens: 50 },
     })
     const [url, opts] = fetchMock.mock.calls[0]
@@ -157,6 +171,7 @@ describe('generateReply — OpenRouter', () => {
     expect(res).toEqual({
       text: 'Olá! Como posso ajudar?',
       handoff: false,
+      hotLead: false,
       usage: { promptTokens: 20, completionTokens: 7, totalTokens: 27 },
     })
     const [url, opts] = fetchMock.mock.calls[0]
@@ -189,6 +204,7 @@ describe('generateReply — Anthropic', () => {
     expect(res).toEqual({
       text: 'Hi there!',
       handoff: false,
+      hotLead: false,
       usage: { promptTokens: 30, completionTokens: 6, totalTokens: 36 },
     })
     const [url, opts] = fetchMock.mock.calls[0]

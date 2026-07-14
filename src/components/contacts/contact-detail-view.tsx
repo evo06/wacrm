@@ -1,9 +1,11 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/hooks/use-auth';
+import { useCan } from '@/hooks/use-can';
 import { formatCurrency } from '@/lib/currency';
+import { AUDIT_NOTE_PREFIX } from '@/lib/leads/audit-constants';
 import { toast } from 'sonner';
 import type { Contact, Tag, ContactTag, ContactNote, CustomField, ContactCustomValue, Deal, MessageTemplate } from '@/types';
 import {
@@ -38,6 +40,7 @@ import {
   X,
   DollarSign,
   LayoutTemplate,
+  Sparkles,
 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
@@ -57,6 +60,7 @@ export function ContactDetailView({
   const t = useTranslations('Contacts.detailView');
   const supabase = createClient();
   const { accountId, defaultCurrency } = useAuth();
+  const canAudit = useCan('send-messages');
 
   const [contact, setContact] = useState<Contact | null>(null);
   const [loading, setLoading] = useState(false);
@@ -85,6 +89,11 @@ export function ContactDetailView({
   const [newNote, setNewNote] = useState('');
   const [savingNote, setSavingNote] = useState(false);
   const [loadingNotes, setLoadingNotes] = useState(false);
+
+  // Profile audit ("Analisar perfil"): kicks off a background scrape+AI run
+  // on the server, then polls the notes until the audit note lands.
+  const [auditRunning, setAuditRunning] = useState(false);
+  const auditPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Custom fields tab
   const [customFields, setCustomFields] = useState<CustomField[]>([]);
@@ -297,6 +306,80 @@ export function ContactDetailView({
     }
   }
 
+  function stopAuditPoll() {
+    if (auditPollRef.current) {
+      clearInterval(auditPollRef.current);
+      auditPollRef.current = null;
+    }
+    setAuditRunning(false);
+  }
+
+  async function runProfileAudit() {
+    if (!contactId || auditRunning) return;
+    setAuditRunning(true);
+    const startedAt = Date.now();
+
+    try {
+      const res = await fetch('/api/leads/profile-audit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contact_id: contactId }),
+      });
+
+      if (res.status !== 202) {
+        const payload = await res.json().catch(() => ({}));
+        toast.error(payload?.error || t('notesTab.auditFailed'));
+        setAuditRunning(false);
+        return;
+      }
+    } catch {
+      toast.error(t('notesTab.auditFailed'));
+      setAuditRunning(false);
+      return;
+    }
+
+    toast.info(t('notesTab.auditStarted'));
+
+    // Poll for the audit note (identified by its marker prefix) created after
+    // we kicked off the run. Give up after ~5 min; the note still lands later.
+    const deadline = startedAt + 5 * 60_000;
+    auditPollRef.current = setInterval(async () => {
+      if (Date.now() > deadline) {
+        stopAuditPoll();
+        toast.message(t('notesTab.auditTimeout'));
+        return;
+      }
+      const { data } = await supabase
+        .from('contact_notes')
+        .select('*')
+        .eq('contact_id', contactId)
+        .order('created_at', { ascending: false })
+        .limit(5);
+      const found = (data ?? []).find(
+        (n) =>
+          n.note_text?.startsWith(AUDIT_NOTE_PREFIX) &&
+          new Date(n.created_at).getTime() >= startedAt - 1000,
+      );
+      if (found) {
+        if (data) setNotes(data);
+        fetchNotes();
+        stopAuditPoll();
+        toast.success(t('notesTab.auditDone'));
+      }
+    }, 8000);
+  }
+
+  // Stop polling when the sheet closes or the contact changes.
+  useEffect(() => {
+    if (!open) stopAuditPoll();
+  }, [open, contactId]);
+
+  useEffect(() => {
+    return () => {
+      if (auditPollRef.current) clearInterval(auditPollRef.current);
+    };
+  }, []);
+
   async function saveCustomFields() {
     if (!contactId) return;
     setSavingCustom(true);
@@ -468,7 +551,7 @@ export function ContactDetailView({
                   value="tags"
                   className="data-active:bg-muted data-active:text-primary text-muted-foreground"
                 >
-                  {t('tabs.tags', { fallback: 'Tags' })}
+                  {t('tabs.tags')}
                 </TabsTrigger>
                 <TabsTrigger
                   value="notes"
@@ -591,19 +674,37 @@ export function ContactDetailView({
                     placeholder={t('notesTab.placeholder')}
                     className="bg-muted border-border text-foreground placeholder:text-muted-foreground min-h-[60px] text-sm resize-none"
                   />
-                  <Button
-                    onClick={addNote}
-                    disabled={!newNote.trim() || savingNote}
-                    className="bg-primary hover:bg-primary/90 text-primary-foreground"
-                    size="sm"
-                  >
-                    {savingNote ? (
-                      <Loader2 className="size-3.5 animate-spin" />
-                    ) : (
-                      <Plus className="size-3.5" />
+                  <div className="flex items-center gap-2">
+                    <Button
+                      onClick={addNote}
+                      disabled={!newNote.trim() || savingNote}
+                      className="bg-primary hover:bg-primary/90 text-primary-foreground"
+                      size="sm"
+                    >
+                      {savingNote ? (
+                        <Loader2 className="size-3.5 animate-spin" />
+                      ) : (
+                        <Plus className="size-3.5" />
+                      )}
+                      {t('notesTab.save')}
+                    </Button>
+                    {canAudit && (
+                      <Button
+                        onClick={runProfileAudit}
+                        disabled={auditRunning}
+                        variant="outline"
+                        size="sm"
+                        title={t('notesTab.auditHint')}
+                      >
+                        {auditRunning ? (
+                          <Loader2 className="size-3.5 animate-spin" />
+                        ) : (
+                          <Sparkles className="size-3.5" />
+                        )}
+                        {t('notesTab.auditBtn')}
+                      </Button>
                     )}
-                    {t('notesTab.save')}
-                  </Button>
+                  </div>
                 </div>
 
                 <div className="flex-1 overflow-y-auto space-y-2">

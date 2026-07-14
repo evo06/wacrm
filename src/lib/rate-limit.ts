@@ -170,6 +170,17 @@ export const RATE_LIMITS = {
    *  capping a stampede; excess inbounds simply don't get an auto-reply
    *  (they still land in the inbox for a human). */
   aiAutoReplyAccount: { limit: 30, windowMs: 60_000 },
+  /** Profile audit ("Auditoria de perfil"), per user. Each run spins up
+   *  the scraper on 4 sources + several competitors + two AI calls — an
+   *  expensive, minutes-long job — so a tight window keeps one agent from
+   *  queuing dozens. 3 per 10 min is plenty for real use. */
+  profileAudit: { limit: 3, windowMs: 10 * 60_000 },
+  /** Profile audit, per account. Bounds the whole team's combined draws on
+   *  the shared scraper + BYO AI key. */
+  profileAuditAccount: { limit: 6, windowMs: 10 * 60_000 },
+  /** Single-flight guard per contact: one audit at a time. A second click
+   *  (or a teammate) within the window gets 429 instead of a duplicate run. */
+  profileAuditContact: { limit: 1, windowMs: 5 * 60_000 },
 } as const;
 
 /** Test-only helper. Clears the in-memory state so unit tests don't

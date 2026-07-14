@@ -9,6 +9,7 @@ import { logAiUsage } from './usage'
 import { latestUserMessage } from './query'
 import { engineSendText } from '@/lib/flows/meta-send'
 import { checkRateLimit, RATE_LIMITS } from '@/lib/rate-limit'
+import { enrichQualifiedLead } from '@/lib/leads/enrichment'
 
 interface DispatchArgs {
   /** Tenancy key — drives config, contact, and whatsapp_config lookups. */
@@ -112,7 +113,7 @@ export async function dispatchInboundToAiReply(
       knowledge,
     })
 
-    const { text, handoff, usage } = await generateReply({
+    const { text, handoff, hotLead, usage } = await generateReply({
       config,
       systemPrompt,
       messages,
@@ -154,6 +155,25 @@ export async function dispatchInboundToAiReply(
         update.assigned_agent_id = config.handoffAgentId
       }
       await db.from('conversations').update(update).eq('id', conversationId)
+      if (hotLead) {
+        try {
+          await enrichQualifiedLead({
+            db,
+            accountId,
+            userId: configOwnerUserId,
+            contactId,
+            conversationId,
+            vars: {},
+            conversationMessages: messages,
+            markAsHotLead: true,
+          })
+        } catch (error) {
+          console.error(
+            '[ai auto-reply] lead enrichment failed:',
+            error instanceof Error ? error.message : error,
+          )
+        }
+      }
       return
     }
 

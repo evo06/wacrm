@@ -66,6 +66,23 @@ describe('WAHA transport', () => {
     expect(fetchMock.mock.calls[0][0]).toBe('http://127.0.0.1:3001/api/sendFile')
   })
 
+  it('makes local Storage URLs reachable from the Docker WAHA container', async () => {
+    process.env.WAHA_API_KEY = 'key'
+    const fetchMock = mockSend()
+    await sendMediaMessage({
+      phoneNumberId: 'default',
+      accessToken: 'key',
+      to: '5511999999999',
+      kind: 'image',
+      link: 'http://127.0.0.1:8000/storage/v1/object/public/chat-media/a.png',
+    })
+
+    const body = JSON.parse(String((fetchMock.mock.calls[0][1] as RequestInit).body))
+    expect(body.file.url).toBe(
+      'http://host.docker.internal:8000/storage/v1/object/public/chat-media/a.png',
+    )
+  })
+
   it('renders local templates as WAHA text', async () => {
     process.env.WAHA_API_KEY = 'key'
     const fetchMock = mockSend()

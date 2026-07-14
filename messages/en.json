@@ -354,6 +354,7 @@
     "detailView": {
       "tabs": {
         "details": "Details",
+        "tags": "Tags",
         "activity": "Activity",
         "notes": "Notes",
         "custom": "Custom Fields",
@@ -387,7 +388,13 @@
         "title": "Internal Notes",
         "placeholder": "Write a note...",
         "save": "Add Note",
-        "noNotes": "No notes yet."
+        "noNotes": "No notes yet.",
+        "auditBtn": "Audit profile",
+        "auditHint": "Analyzes the client's public profiles (Instagram, website, LinkedIn, Google Maps), suggests improvements, and researches competitors, saving the result as a note.",
+        "auditStarted": "Profile audit started. This may take a few minutes.",
+        "auditDone": "Profile audit finished — see the new note.",
+        "auditTimeout": "The audit is taking longer than expected. Keep an eye on the notes.",
+        "auditFailed": "Could not start the profile audit."
       },
       "dealsTab": {
         "noDeals": "No deals yet"
@@ -882,6 +889,7 @@
       "scheduleHint": "Cron expression (e.g. 0 9 * * 1-5)",
       "active": "Active",
       "activeAria": "Active",
+      "delete": "Delete",
       "save": "Save",
       "saveDraft": "Save Draft",
       "untitled": "Untitled automation",
@@ -1431,6 +1439,16 @@
     "whatsapp": {
       "title": "WhatsApp connection",
       "description": "Connect your Meta WhatsApp Business API. Credentials, webhook, and setup steps all live here.",
+      "agentSignatureTitle": "Agent identification",
+      "agentSignatureDesc": "Show customers which team member replied from the shared number.",
+      "agentSignatureToggle": "Include the agent name in replies",
+      "agentSignatureHint": "Applies only to messages and captions sent manually from the inbox. Automations, broadcasts, templates, and API sends are unchanged.",
+      "agentSignaturePreview": "WhatsApp example",
+      "agentSignaturePreviewMessage": "Hi! How can I help?",
+      "agentSignatureAdminOnly": "Only administrators can change this setting.",
+      "agentSignatureSaveFailed": "Could not save the agent identification setting.",
+      "agentSignatureEnabledToast": "Agent names are now included in replies.",
+      "agentSignatureDisabledToast": "Agent names are no longer included in replies.",
       "tokenCorrupted": "Stored token can't be decrypted",
       "resetting": "Resetting...",
       "resetConfig": "Reset Configuration",

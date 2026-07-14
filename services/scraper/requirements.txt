@@ -1,0 +1,5 @@
+# Scrapling — BSD-3-Clause, free/open-source. `[fetchers]` pulls in the
+# browser-backed StealthyFetcher/DynamicFetcher (Camoufox + Playwright).
+scrapling[fetchers]==0.4.*
+fastapi==0.115.*
+uvicorn[standard]==0.32.*

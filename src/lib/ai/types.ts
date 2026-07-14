@@ -60,6 +60,8 @@ export interface GenerateResult {
   text: string
   /** True when the model asked to hand off to a human (auto-reply mode). */
   handoff: boolean
+  /** Distinguishes commercial qualification from support/safety handoff. */
+  hotLead: boolean
   /** Provider token usage for this call, or null when unavailable. */
   usage: AiUsage | null
 }

@@ -14,6 +14,7 @@ const messageInserts: Array<Record<string, unknown>> = []
 // Toggles for the per-test scenario.
 let existingConversation: Record<string, unknown> | null = null
 let contactRow: Record<string, unknown> | null = null
+let agentSignatureEnabled = false
 // A conversation created during the request becomes retrievable by id —
 // the shared send core re-loads the conversation (with its contact) from
 // just the id, so the mock must model insert-then-select-by-id.
@@ -35,7 +36,15 @@ function makeSupabaseMock() {
     const selectResult = () => {
       switch (table) {
         case 'profiles':
-          return { data: { account_id: 'acct-1' }, error: null }
+          return {
+            data: { account_id: 'acct-1', full_name: 'Maria Silva' },
+            error: null,
+          }
+        case 'accounts':
+          return {
+            data: { agent_signature_enabled: agentSignatureEnabled },
+            error: null,
+          }
         case 'contacts':
           return { data: contactRow, error: null }
         case 'conversations':
@@ -110,7 +119,7 @@ function makeSupabaseMock() {
   return {
     auth: {
       getUser: vi.fn(async () => ({
-        data: { user: { id: 'user-1' } },
+        data: { user: { id: 'user-1', email: 'maria@example.com' } },
         error: null,
       })),
     },
@@ -143,12 +152,13 @@ vi.mock('@/lib/whatsapp/encryption', () => ({
   isLegacyFormat: vi.fn(() => false),
 }))
 
-const { sendTemplateMessage } = vi.hoisted(() => ({
+const { sendTemplateMessage, sendTextMessage } = vi.hoisted(() => ({
   sendTemplateMessage: vi.fn(async () => ({ messageId: 'wamid-1' })),
+  sendTextMessage: vi.fn(async () => ({ messageId: 'wamid-text-1' })),
 }))
 vi.mock('@/lib/whatsapp/waha-api', () => ({
   sendTemplateMessage,
-  sendTextMessage: vi.fn(),
+  sendTextMessage,
   sendMediaMessage: vi.fn(),
 }))
 
@@ -172,6 +182,20 @@ function postContactTemplate(overrides: Record<string, unknown> = {}) {
   )
 }
 
+function postConversationText(contentText = 'Olá!') {
+  return POST(
+    new Request('http://localhost/api/whatsapp/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        conversation_id: 'conv-existing',
+        message_type: 'text',
+        content_text: contentText,
+      }),
+    }),
+  )
+}
+
 describe('POST /api/whatsapp/send — contact_id template path', () => {
   beforeEach(() => {
     conversationInserts.length = 0
@@ -179,8 +203,10 @@ describe('POST /api/whatsapp/send — contact_id template path', () => {
     existingConversation = null
     createdConversation = null
     contactRow = CONTACT
+    agentSignatureEnabled = false
     supabaseMock = makeSupabaseMock()
     sendTemplateMessage.mockClear()
+    sendTextMessage.mockClear()
   })
 
   afterEach(() => {
@@ -257,5 +283,43 @@ describe('POST /api/whatsapp/send — contact_id template path', () => {
       }),
     )
     expect(res.status).toBe(400)
+  })
+
+  it('prefixes manual inbox text with the authenticated agent name when enabled', async () => {
+    agentSignatureEnabled = true
+    existingConversation = {
+      id: 'conv-existing',
+      account_id: 'acct-1',
+      contact_id: 'contact-1',
+      contact: CONTACT,
+    }
+
+    const res = await postConversationText('Olá! Como posso ajudar?')
+
+    expect(res.status).toBe(200)
+    expect(sendTextMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: '*Maria Silva:*\nOlá! Como posso ajudar?',
+      }),
+    )
+    expect(messageInserts[0]).toMatchObject({
+      content_text: '*Maria Silva:*\nOlá! Como posso ajudar?',
+    })
+  })
+
+  it('keeps manual inbox text unchanged when the setting is disabled', async () => {
+    existingConversation = {
+      id: 'conv-existing',
+      account_id: 'acct-1',
+      contact_id: 'contact-1',
+      contact: CONTACT,
+    }
+
+    const res = await postConversationText('Olá!')
+
+    expect(res.status).toBe(200)
+    expect(sendTextMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ text: 'Olá!' }),
+    )
   })
 })

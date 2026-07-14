@@ -1,0 +1,32 @@
+services:
+  scraper:
+    build: ./services/scraper
+    restart: unless-stopped
+    ports:
+      # Loopback-only, like WAHA. The Next.js app reaches it via
+      # SCRAPER_SERVICE_URL=http://127.0.0.1:3011 (or host.docker.internal
+      # from inside another container).
+      - '127.0.0.1:3011:8000'
+    environment:
+      SCRAPER_API_KEY: ${SCRAPER_API_KEY}
+      SCRAPER_MAX_BROWSERS: '2'
+    # Headless browsers need more shared memory than Docker's 64 MB default,
+    # or Chromium/Camoufox crash on content-heavy pages.
+    shm_size: 2gb
+    mem_limit: 2g
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+    healthcheck:
+      test: ['CMD', 'python', '-c', "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health').status==200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+    logging:
+      driver: json-file
+      options:
+        max-size: 20m
+        max-file: '3'

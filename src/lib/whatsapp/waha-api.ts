@@ -115,6 +115,28 @@ function chatId(phone: string): string {
   return `${digits}@c.us`
 }
 
+/**
+ * WAHA runs in Docker while this self-hosted CRM and Supabase are exposed on
+ * the Windows host. A Storage public URL such as http://127.0.0.1:8000/...
+ * is valid in the browser, but from inside the WAHA container it points back
+ * to WAHA itself. Docker provides host.docker.internal for this exact bridge.
+ *
+ * Only rewrite loopback hosts. Public deployments and already-routable URLs
+ * retain their original host unchanged.
+ */
+function urlReachableFromWaha(link: string): string {
+  try {
+    const url = new URL(link)
+    if (url.hostname === '127.0.0.1' || url.hostname === 'localhost' || url.hostname === '::1') {
+      url.hostname = 'host.docker.internal'
+    }
+    return url.toString()
+  } catch {
+    // Let WAHA report malformed links with its normal error response.
+    return link
+  }
+}
+
 function extractMessageId(data: unknown): string {
   if (!data || typeof data !== 'object') {
     throw new Error('WAHA returned no message id.')
@@ -161,7 +183,6 @@ function sessionConfig(accountId: string, webhookUrl: string, webhookSecret: str
   return {
     metadata: { account_id: accountId },
     ignore: { status: true, groups: true, channels: true, broadcast: true },
-    webjs: { tagsEventsOn: true },
     webhooks: webhookUrl
       ? [
           {
@@ -223,6 +244,61 @@ export async function getWahaQr(session: string): Promise<Response> {
     headers: { Accept: 'image/png' },
     cache: 'no-store',
   })
+}
+
+/**
+ * Resolve a WhatsApp LID (privacy-preserving sender id, e.g.
+ * "78877695181052@lid") to the contact's real phone JID
+ * ("5521978933556@c.us") using the session's lid↔pn mapping store.
+ * Returns null when the mapping isn't known (yet) — callers must
+ * degrade gracefully rather than drop the message.
+ */
+export async function resolveWahaLid(args: {
+  session: string
+  lid: string
+  accessToken?: string
+}): Promise<string | null> {
+  try {
+    const data = await wahaJson<{ lid: string; pn: string | null }>(
+      `/api/${encodeURIComponent(args.session)}/lids/${encodeURIComponent(args.lid)}`,
+      { apiKey: args.accessToken, cache: 'no-store' },
+    )
+    return data.pn || null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Read a WhatsApp contact's display name. Some engines omit `pushName` from
+ * an inbound webhook even though it is available from the contacts endpoint.
+ * This lookup is deliberately best-effort: failure to read a profile must
+ * never delay or discard an inbound message.
+ */
+export async function getWahaContactDisplayName(args: {
+  session: string
+  contactId: string
+  accessToken?: string
+}): Promise<string | null> {
+  try {
+    const query = new URLSearchParams({
+      session: args.session,
+      contactId: args.contactId,
+    })
+    const contact = await wahaJson<{
+      name?: string | null
+      pushname?: string | null
+      pushName?: string | null
+      shortName?: string | null
+    }>(`/api/contacts?${query.toString()}`, {
+      apiKey: args.accessToken,
+      cache: 'no-store',
+    })
+    const name = contact.pushname || contact.pushName || contact.name || contact.shortName
+    return typeof name === 'string' && name.trim() ? name.trim().slice(0, 255) : null
+  } catch {
+    return null
+  }
 }
 
 export async function fetchWahaMedia(path: string, accessToken?: string): Promise<Response> {
@@ -290,7 +366,7 @@ export async function sendMediaMessage(args: {
       session: args.phoneNumberId,
       chatId: chatId(args.to),
       file: {
-        url: args.link,
+        url: urlReachableFromWaha(args.link),
         mimetype: mimeFor(args.kind, args.filename),
         ...(args.filename ? { filename: args.filename } : {}),
       },

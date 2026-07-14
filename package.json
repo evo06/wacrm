@@ -44,7 +44,11 @@
     "supabase:up": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/supabase-selfhost.ps1 up",
     "supabase:down": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/supabase-selfhost.ps1 down",
     "supabase:status": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/supabase-selfhost.ps1 status",
-    "supabase:logs": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/supabase-selfhost.ps1 logs"
+    "supabase:logs": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/supabase-selfhost.ps1 logs",
+    "scraper:up": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/scraper-selfhost.ps1 up",
+    "scraper:down": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/scraper-selfhost.ps1 down",
+    "scraper:status": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/scraper-selfhost.ps1 status",
+    "scraper:logs": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/scraper-selfhost.ps1 logs"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",

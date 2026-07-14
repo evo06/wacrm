@@ -50,11 +50,6 @@ export async function middleware(request: NextRequest) {
       return NextResponse.redirect(url)
     }
 
-    if (!authenticated && pathname.startsWith('/api/whatsapp/') &&
-        !pathname.includes('/webhook')) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
     return NextResponse.next({ request })
   }
 
@@ -139,19 +134,19 @@ export async function middleware(request: NextRequest) {
     return withRefreshedCookies(NextResponse.redirect(url))
   }
 
-  // API routes that need auth (not webhooks)
-  if (!user && request.nextUrl.pathname.startsWith('/api/whatsapp/') &&
-      !request.nextUrl.pathname.includes('/webhook')) {
-    return withRefreshedCookies(
-      NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    )
-  }
-
   return supabaseResponse
 }
 
+// `/api/*` is excluded below: every route handler under src/app/api verifies
+// its own auth (session cookie, HMAC/webhook signature, API key, or shared
+// cron secret — audited route by route), so running this middleware's
+// Supabase getUser() network round-trip in front of them too was pure
+// overhead — measured at 90-660ms per request, including on requests (like
+// inbound WhatsApp webhooks) that carry no user session at all.
+// `/icon` is the dynamic favicon (src/app/icon.tsx) — it needs no auth and
+// was paying the same round-trip on every page load.
 export const config = {
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    '/((?!api|_next/static|_next/image|favicon.ico|icon|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
 }

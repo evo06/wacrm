@@ -10,6 +10,10 @@ import {
   validateSendMessageParams,
   SendMessageError,
 } from '@/lib/whatsapp/send-message'
+import {
+  applyAgentSignature,
+  resolveAgentDisplayName,
+} from '@/lib/whatsapp/agent-signature'
 
 // The dashboard's outbound-send endpoint. It owns auth, per-user rate
 // limiting, and the two ways the UI targets a thread — an existing
@@ -49,7 +53,7 @@ export async function POST(request: Request) {
     // returned nothing for teammates who didn't author the row.
     const { data: profile } = await supabase
       .from('profiles')
-      .select('account_id')
+      .select('account_id, full_name')
       .eq('user_id', user.id)
       .maybeSingle()
     const accountId = profile?.account_id as string | undefined
@@ -59,6 +63,12 @@ export async function POST(request: Request) {
         { status: 403 },
       )
     }
+
+    const { data: accountSettings } = await supabase
+      .from('accounts')
+      .select('agent_signature_enabled')
+      .eq('id', accountId)
+      .maybeSingle()
 
     const body = await request.json()
     const {
@@ -167,6 +177,18 @@ export async function POST(request: Request) {
       )
     }
 
+    const shouldSignContent =
+      accountSettings?.agent_signature_enabled === true &&
+      Boolean(conversationIdInput) &&
+      (message_type === 'text' ||
+        ['image', 'video', 'document'].includes(message_type))
+    const outboundContentText = shouldSignContent
+      ? applyAgentSignature(
+          content_text,
+          resolveAgentDisplayName(profile?.full_name, user.email),
+        )
+      : content_text
+
     // Delegate to the shared send core (validates, sends to Meta with
     // phone-variant retry, persists, pauses active flow runs). Its
     // `SendMessageError` carries a machine code + HTTP status; the
@@ -175,7 +197,7 @@ export async function POST(request: Request) {
       const result = await sendMessageToConversation(supabase, accountId, {
         conversationId,
         messageType: message_type,
-        contentText: content_text,
+        contentText: outboundContentText,
         mediaUrl: media_url,
         filename,
         templateName: template_name,

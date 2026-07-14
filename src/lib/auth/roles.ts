@@ -103,6 +103,16 @@ export function canDeleteAccount(role: AccountRole): boolean {
   return role === "owner";
 }
 
+/**
+ * Owner / admin: permanently delete contacts (and, via cascade, their
+ * conversations + messages). Deliberately stricter than the general
+ * `canSendMessages` (agent+) write gate — contact deletion destroys
+ * conversation history, so agents can create/edit but not delete.
+ */
+export function canDeleteContacts(role: AccountRole): boolean {
+  return hasMinRole(role, "admin");
+}
+
 /** Owner only: hand the account to another member. */
 export function canTransferOwnership(role: AccountRole): boolean {
   return role === "owner";

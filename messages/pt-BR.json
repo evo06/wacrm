@@ -354,6 +354,7 @@
     "detailView": {
       "tabs": {
         "details": "Detalhes",
+        "tags": "Etiquetas",
         "activity": "Atividade",
         "notes": "Anotações",
         "custom": "Campos personalizados",
@@ -387,7 +388,13 @@
         "title": "Anotações internas",
         "placeholder": "Escreva uma anotação...",
         "save": "Adicionar anotação",
-        "noNotes": "Nenhuma anotação ainda."
+        "noNotes": "Nenhuma anotação ainda.",
+        "auditBtn": "Analisar perfil",
+        "auditHint": "Analisa os perfis públicos do cliente (Instagram, site, LinkedIn, Google Maps), sugere melhorias e pesquisa concorrentes, salvando o resultado como anotação.",
+        "auditStarted": "Análise de perfil iniciada. Isso pode levar alguns minutos.",
+        "auditDone": "Análise de perfil concluída — veja a nova anotação.",
+        "auditTimeout": "A análise está demorando mais que o previsto. Continue acompanhando as anotações.",
+        "auditFailed": "Não foi possível iniciar a análise de perfil."
       },
       "dealsTab": {
         "noDeals": "Nenhum negócio ainda"
@@ -882,6 +889,7 @@
       "scheduleHint": "Expressão cron (ex.: 0 9 * * 1-5)",
       "active": "Ativa",
       "activeAria": "Ativa",
+      "delete": "Excluir",
       "save": "Salvar",
       "saveDraft": "Salvar rascunho",
       "untitled": "Automação sem título",
@@ -1421,6 +1429,16 @@
     "whatsapp": {
       "title": "Conexão do WhatsApp",
       "description": "Conecte a API do WhatsApp Business da Meta. Credenciais, webhook e etapas de configuração ficam aqui.",
+      "agentSignatureTitle": "Identificação do atendente",
+      "agentSignatureDesc": "Mostre ao cliente qual membro da equipe respondeu pelo número compartilhado.",
+      "agentSignatureToggle": "Incluir o nome do atendente nas respostas",
+      "agentSignatureHint": "Aplica-se somente a mensagens e legendas enviadas manualmente pelo inbox. Automações, campanhas, modelos e API não são alterados.",
+      "agentSignaturePreview": "Exemplo no WhatsApp",
+      "agentSignaturePreviewMessage": "Olá! Como posso ajudar?",
+      "agentSignatureAdminOnly": "Somente administradores podem alterar esta configuração.",
+      "agentSignatureSaveFailed": "Não foi possível salvar a identificação do atendente.",
+      "agentSignatureEnabledToast": "Nome do atendente ativado nas respostas.",
+      "agentSignatureDisabledToast": "Nome do atendente desativado nas respostas.",
       "tokenCorrupted": "Não foi possível descriptografar o token armazenado",
       "resetting": "Redefinindo...",
       "resetConfig": "Redefinir configuração",

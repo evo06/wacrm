@@ -3,7 +3,11 @@ import { createClient } from '@supabase/supabase-js'
 import { createHmac, timingSafeEqual } from 'node:crypto'
 import { decrypt, encrypt, isLegacyFormat } from '@/lib/whatsapp/encryption'
 import { getMediaUrl } from '@/lib/whatsapp/meta-api'
-import { getWahaEnvironment } from '@/lib/whatsapp/waha-api'
+import {
+  getWahaContactDisplayName,
+  getWahaEnvironment,
+  resolveWahaLid,
+} from '@/lib/whatsapp/waha-api'
 import { normalizePhone } from '@/lib/whatsapp/phone-utils'
 import { findExistingContact, isUniqueViolation } from '@/lib/contacts/dedupe'
 import { verifyMetaWebhookSignature } from '@/lib/whatsapp/webhook-signature'
@@ -83,7 +87,8 @@ interface WahaWebhook {
     replyTo?: { id?: string } | null
     reaction?: { text?: string; messageId?: string }
     notifyName?: string
-    _data?: { notifyName?: string; pushName?: string }
+    pushName?: string
+    _data?: { notifyName?: string; pushName?: string; pushname?: string }
   }
 }
 
@@ -345,11 +350,51 @@ async function processWahaWebhook(body: WahaWebhook) {
   }
 
   if (!payload.from || payload.fromMe || payload.from.endsWith('@g.us') || !payload.id) return
-  const contactName =
-    payload.notifyName || payload._data?.notifyName || payload._data?.pushName || payload.from
+
+  const accessToken = decrypt(config.access_token)
+
+  // Senders behind WhatsApp's number-privacy setting arrive identified
+  // by a LID ("78877695181052@lid") instead of their phone JID. Storing
+  // that as the contact's phone breaks outbound sends (the digits aren't
+  // a real number — GOWS fails with "no LID found for ...@s.whatsapp.net").
+  // Resolve it to the real phone via the session's lid↔pn store; if the
+  // mapping isn't known we keep the LID so the inbound message is never
+  // dropped, and a later message can converge once the mapping exists.
+  let senderJid = payload.from
+  if (senderJid.endsWith('@lid')) {
+    const pn = await resolveWahaLid({
+      session: body.session,
+      lid: senderJid,
+      accessToken,
+    })
+    if (pn) {
+      senderJid = pn
+    } else {
+      console.warn('[waha/webhook] unresolved LID sender, keeping LID id:', senderJid)
+    }
+  }
+
+  // WAHA normally puts the WhatsApp profile name in one of these webhook
+  // fields. GOWS can omit it for a first message, so fall back to its contact
+  // endpoint before using the phone number. This keeps CRM contacts named
+  // after the customer rather than a technical JID such as "...@c.us".
+  const webhookName = [
+    payload.notifyName,
+    payload.pushName,
+    payload._data?.notifyName,
+    payload._data?.pushName,
+    payload._data?.pushname,
+  ].find((value): value is string => typeof value === 'string' && value.trim().length > 0)
+  const contactName = webhookName?.trim().slice(0, 255)
+    || await getWahaContactDisplayName({
+      session: body.session,
+      contactId: senderJid,
+      accessToken,
+    })
+    || senderJid.replace(/@.+$/, '')
   const contact = {
     profile: { name: contactName },
-    wa_id: payload.from.replace(/@.+$/, ''),
+    wa_id: senderJid.replace(/@.+$/, ''),
   }
 
   let message: WhatsAppMessage
@@ -357,7 +402,7 @@ async function processWahaWebhook(body: WahaWebhook) {
     if (!payload.reaction?.messageId) return
     message = {
       id: payload.id,
-      from: payload.from,
+      from: senderJid,
       timestamp: String(payload.timestamp || Date.now() / 1000),
       type: 'reaction',
       reaction: {
@@ -369,7 +414,7 @@ async function processWahaWebhook(body: WahaWebhook) {
     const type = wahaContentType(payload)
     message = {
       id: payload.id,
-      from: payload.from,
+      from: senderJid,
       timestamp: String(payload.timestamp || Date.now() / 1000),
       type,
       text: type === 'text' ? { body: payload.body || '' } : undefined,
@@ -413,7 +458,7 @@ async function processWahaWebhook(body: WahaWebhook) {
     contact,
     config.account_id,
     config.user_id,
-    decrypt(config.access_token),
+    accessToken,
   )
 }
 
@@ -868,6 +913,9 @@ async function processMessage(
     .eq('sender_type', 'customer')
   const isFirstInboundMessage = (priorCustomerMsgCount ?? 0) === 0
 
+  // `created_at` intentionally left to the DB's NOW() default, like every
+  // other sender — mixing it with the provider's `message.timestamp` let
+  // webhook delivery lag scramble the thread's chronological order.
   const { error: msgError } = await supabaseAdmin().from('messages').insert({
     conversation_id: conversation.id,
     sender_type: 'customer',
@@ -876,7 +924,6 @@ async function processMessage(
     media_url: mediaUrl,
     message_id: message.id,
     status: 'delivered',
-    created_at: new Date(parseInt(message.timestamp) * 1000).toISOString(),
     reply_to_message_id: replyToInternalId,
     // Only populated for content_type='interactive'. Migration 010 added
     // the column; null for every other content_type so existing inserts

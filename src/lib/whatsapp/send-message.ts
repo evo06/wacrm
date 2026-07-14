@@ -239,6 +239,9 @@ export async function sendMessageToConversation(
   }
 
   const sanitizedPhone = sanitizePhoneForMeta(contact.phone);
+  console.log(
+    '[send-message] contact.id=' + contact.id + ' | raw phone=' + contact.phone + ' | sanitized=' + sanitizedPhone
+  );
   if (!isValidE164(sanitizedPhone)) {
     throw new SendMessageError(
       'bad_request',

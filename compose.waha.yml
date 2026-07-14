@@ -10,6 +10,15 @@ services:
       WHATSAPP_SWAGGER_ENABLED: 'false'
       WAHA_LOG_FORMAT: PRETTY
       WAHA_LOG_LEVEL: info
+      # WEBJS drives WhatsApp Web via a headless browser and broke after a
+      # WhatsApp Web update ("No LID for user" on every send — see
+      # devlikeapro/waha#1677, #1881). NOWEB (Baileys-based) hit a
+      # separate, systemic bug: WhatsApp's new @lid privacy-token
+      # handshake (tctoken/cstoken) never completes for new contacts, so
+      # every first reply to a new contact silently no-ops ("USync fetch
+      # yielded no results for pending PNs"). GOWS is a from-scratch Go
+      # implementation (not Baileys) — trying it as the next candidate.
+      WHATSAPP_DEFAULT_ENGINE: GOWS
     volumes:
       - './.waha/sessions:/app/.sessions'
       - './.waha/media:/app/.media'

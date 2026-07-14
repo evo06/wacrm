@@ -2,13 +2,17 @@
 
 import Image from 'next/image'
 import { useCallback, useEffect, useState } from 'react'
-import { CheckCircle2, Loader2, QrCode, RefreshCw, Smartphone, Unplug } from 'lucide-react'
+import { CheckCircle2, Loader2, MessageSquareText, QrCode, RefreshCw, Smartphone, Unplug } from 'lucide-react'
 import { toast } from 'sonner'
 import { useTranslations } from 'next-intl'
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Switch } from '@/components/ui/switch'
+import { useAuth } from '@/hooks/use-auth'
+import { createClient } from '@/lib/supabase/client'
+import { resolveAgentDisplayName } from '@/lib/whatsapp/agent-signature'
 import { SettingsPanelHead } from './settings-panel-head'
 
 interface WahaConnection {
@@ -34,11 +38,26 @@ const STATUS_COPY: Record<string, string> = {
 
 export function WhatsAppConfig() {
   const t = useTranslations('Settings.whatsapp')
+  const supabase = createClient()
+  const {
+    account,
+    accountId,
+    canEditSettings,
+    profile,
+    profileLoading,
+    refreshProfile,
+  } = useAuth()
   const [connection, setConnection] = useState<WahaConnection | null>(null)
   const [loading, setLoading] = useState(true)
   const [preparing, setPreparing] = useState(false)
   const [disconnecting, setDisconnecting] = useState(false)
+  const [signatureEnabled, setSignatureEnabled] = useState(false)
+  const [savingSignature, setSavingSignature] = useState(false)
   const [qrVersion, setQrVersion] = useState(0)
+
+  useEffect(() => {
+    setSignatureEnabled(account?.agent_signature_enabled ?? false)
+  }, [account?.agent_signature_enabled])
 
   const refresh = useCallback(async (silent = false) => {
     if (!silent) setLoading(true)
@@ -107,6 +126,32 @@ export function WhatsAppConfig() {
     }
   }
 
+  async function updateAgentSignature(checked: boolean) {
+    if (!accountId || !canEditSettings) return
+
+    const previous = signatureEnabled
+    setSignatureEnabled(checked)
+    setSavingSignature(true)
+
+    const { error } = await supabase
+      .from('accounts')
+      .update({ agent_signature_enabled: checked })
+      .eq('id', accountId)
+
+    if (error) {
+      setSignatureEnabled(previous)
+      toast.error(t('agentSignatureSaveFailed'))
+      setSavingSignature(false)
+      return
+    }
+
+    await refreshProfile()
+    setSavingSignature(false)
+    toast.success(
+      checked ? t('agentSignatureEnabledToast') : t('agentSignatureDisabledToast'),
+    )
+  }
+
   if (loading) {
     return (
       <section className="animate-in fade-in-50 duration-200">
@@ -121,6 +166,7 @@ export function WhatsAppConfig() {
   const status = connection?.status || 'NOT_CONFIGURED'
   const statusText = connection?.message || STATUS_COPY[status] || 'Verificando a conexão…'
   const showQr = Boolean(connection?.configured && !connection.connected && connection.needs_qr)
+  const agentName = resolveAgentDisplayName(profile?.full_name, profile?.email)
 
   return (
     <section className="animate-in fade-in-50 duration-200">
@@ -142,6 +188,56 @@ export function WhatsAppConfig() {
             </AlertTitle>
             <AlertDescription>{statusText}</AlertDescription>
           </Alert>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <MessageSquareText className="size-5 text-primary" />
+                {t('agentSignatureTitle')}
+              </CardTitle>
+              <CardDescription>{t('agentSignatureDesc')}</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-start justify-between gap-4 rounded-lg border border-border bg-muted/40 p-4">
+                <div className="space-y-1">
+                  <p className="text-sm font-medium text-foreground">
+                    {t('agentSignatureToggle')}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {t('agentSignatureHint')}
+                  </p>
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                  {savingSignature ? (
+                    <Loader2 className="size-4 animate-spin text-muted-foreground" />
+                  ) : null}
+                  <Switch
+                    checked={signatureEnabled}
+                    onCheckedChange={(checked) => void updateAgentSignature(checked)}
+                    disabled={
+                      savingSignature || profileLoading || !canEditSettings
+                    }
+                    aria-label={t('agentSignatureToggle')}
+                  />
+                </div>
+              </div>
+
+              <div className="rounded-lg bg-muted px-4 py-3 text-sm text-muted-foreground">
+                <p className="mb-1 text-xs font-medium tracking-wide uppercase">
+                  {t('agentSignaturePreview')}
+                </p>
+                <p className="whitespace-pre-line text-foreground">
+                  {`*${agentName}:*\n${t('agentSignaturePreviewMessage')}`}
+                </p>
+              </div>
+
+              {!canEditSettings ? (
+                <p className="text-xs text-muted-foreground">
+                  {t('agentSignatureAdminOnly')}
+                </p>
+              ) : null}
+            </CardContent>
+          </Card>
 
           {showQr && (
             <Card>

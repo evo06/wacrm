@@ -40,6 +40,7 @@ import {
   engineSendText,
 } from "./meta-send";
 import { decideFallback, resolveFallbackPolicy } from "./fallback";
+import { enrichQualifiedLead } from "@/lib/leads/enrichment";
 import {
   type CollectInputNodeConfig,
   type ConditionNodeConfig,
@@ -447,9 +448,30 @@ async function executeHandoff(
       .update(convUpdate)
       .eq("id", run.conversation_id);
   }
+  let enrichment: { enriched: boolean; profileAnalyzed: boolean } | null = null;
+  try {
+    enrichment = await enrichQualifiedLead({
+      db,
+      accountId: run.account_id,
+      userId: run.user_id,
+      contactId: run.contact_id!,
+      conversationId: run.conversation_id,
+      vars: run.vars,
+    });
+  } catch (err) {
+    console.error(
+      "[flows] qualified lead enrichment failed:",
+      err instanceof Error ? err.message : err,
+    );
+    await logEvent(db, run.id, "error", node.node_key, {
+      reason: "qualified_lead_enrichment_failed",
+    });
+  }
   await logEvent(db, run.id, "handoff", node.node_key, {
     note: cfg.note ?? null,
     assigned_to: cfg.assign_to ?? null,
+    lead_enriched: enrichment?.enriched ?? false,
+    profile_analyzed: enrichment?.profileAnalyzed ?? false,
   });
   await endRun(db, run.id, "handed_off", "handoff_node");
 }
