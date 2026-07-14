@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/hooks/use-auth'
+import { LOCAL_AUTH_CLIENT_ENABLED } from '@/lib/auth/local-mode'
 import { formatCurrency } from '@/lib/currency'
 import {
   MessageSquare,
@@ -38,33 +39,66 @@ import { useTranslations } from 'next-intl'
 
 type RangeDays = 7 | 30 | 90
 
+const LOCAL_EMPTY_METRICS: MetricsBundle = {
+  activeConversations: { current: 0, previous: 0 },
+  newContactsToday: { current: 0, previous: 0 },
+  openDealsValue: 0,
+  openDealsCount: 0,
+  messagesSentToday: { current: 0, previous: 0 },
+}
+
+const LOCAL_EMPTY_SERIES: Record<RangeDays, ConversationsSeriesPoint[]> = {
+  7: [],
+  30: [],
+  90: [],
+}
+
+const LOCAL_EMPTY_PIPELINE: PipelineDonutData = { stages: [], totalValue: 0 }
+const LOCAL_EMPTY_RESPONSE: ResponseTimeSummary = {
+  buckets: [],
+  thisWeekAvg: null,
+  lastWeekAvg: null,
+}
+
 export default function DashboardPage() {
   const t = useTranslations('Dashboard.page')
   const { defaultCurrency } = useAuth()
-  const [metrics, setMetrics] = useState<MetricsBundle | null>(null)
-  const [metricsLoading, setMetricsLoading] = useState(true)
+  const [metrics, setMetrics] = useState<MetricsBundle | null>(
+    LOCAL_AUTH_CLIENT_ENABLED ? LOCAL_EMPTY_METRICS : null,
+  )
+  const [metricsLoading, setMetricsLoading] = useState(!LOCAL_AUTH_CLIENT_ENABLED)
 
   const [range, setRange] = useState<RangeDays>(30)
   // Keep a cache per range so switching tabs doesn't re-fetch what we
   // already have. Ranges the user hasn't opened yet stay null and
   // trigger a fetch on first view.
-  const [series, setSeries] = useState<Record<RangeDays, ConversationsSeriesPoint[] | null>>({
-    7: null,
-    30: null,
-    90: null,
-  })
-  const [seriesLoading, setSeriesLoading] = useState(true)
+  const [series, setSeries] = useState<Record<RangeDays, ConversationsSeriesPoint[] | null>>(
+    LOCAL_AUTH_CLIENT_ENABLED
+      ? LOCAL_EMPTY_SERIES
+      : { 7: null, 30: null, 90: null },
+  )
+  const [seriesLoading, setSeriesLoading] = useState(!LOCAL_AUTH_CLIENT_ENABLED)
 
-  const [pipeline, setPipeline] = useState<PipelineDonutData | null>(null)
-  const [pipelineLoading, setPipelineLoading] = useState(true)
+  const [pipeline, setPipeline] = useState<PipelineDonutData | null>(
+    LOCAL_AUTH_CLIENT_ENABLED ? LOCAL_EMPTY_PIPELINE : null,
+  )
+  const [pipelineLoading, setPipelineLoading] = useState(!LOCAL_AUTH_CLIENT_ENABLED)
 
-  const [responseTime, setResponseTime] = useState<ResponseTimeSummary | null>(null)
-  const [responseTimeLoading, setResponseTimeLoading] = useState(true)
+  const [responseTime, setResponseTime] = useState<ResponseTimeSummary | null>(
+    LOCAL_AUTH_CLIENT_ENABLED ? LOCAL_EMPTY_RESPONSE : null,
+  )
+  const [responseTimeLoading, setResponseTimeLoading] = useState(
+    !LOCAL_AUTH_CLIENT_ENABLED,
+  )
 
-  const [activity, setActivity] = useState<ActivityItem[] | null>(null)
-  const [activityLoading, setActivityLoading] = useState(true)
+  const [activity, setActivity] = useState<ActivityItem[] | null>(
+    LOCAL_AUTH_CLIENT_ENABLED ? [] : null,
+  )
+  const [activityLoading, setActivityLoading] = useState(!LOCAL_AUTH_CLIENT_ENABLED)
 
   const loadAll = useCallback(() => {
+    if (LOCAL_AUTH_CLIENT_ENABLED) return
+
     const db = createClient()
 
     // Kick everything off in parallel. Each block has its own
@@ -131,6 +165,13 @@ export default function DashboardPage() {
         </p>
       </div>
 
+      {LOCAL_AUTH_CLIENT_ENABLED ? (
+        <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+          Acesso local ativo. Configure o Supabase para carregar conversas,
+          contatos e indicadores reais neste painel.
+        </div>
+      ) : null}
+
       {/* Metric cards */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {metricsLoading || !metrics ? (
@@ -139,7 +180,7 @@ export default function DashboardPage() {
           <>
             <MetricCard
               title={t('activeConversations')}
-              value={metrics.activeConversations.current.toLocaleString()}
+              value={metrics.activeConversations.current.toLocaleString('pt-BR')}
               icon={MessageSquare}
               delta={{
                 sign: metrics.activeConversations.previous,
@@ -152,7 +193,7 @@ export default function DashboardPage() {
             />
             <MetricCard
               title={t('newContactsToday')}
-              value={metrics.newContactsToday.current.toLocaleString()}
+              value={metrics.newContactsToday.current.toLocaleString('pt-BR')}
               icon={UserPlus}
               delta={{
                 sign:
@@ -172,7 +213,7 @@ export default function DashboardPage() {
             />
             <MetricCard
               title={t('messagesSentToday')}
-              value={metrics.messagesSentToday.current.toLocaleString()}
+              value={metrics.messagesSentToday.current.toLocaleString('pt-BR')}
               icon={Send}
               delta={{
                 sign:
@@ -230,5 +271,5 @@ export default function DashboardPage() {
 function deltaLabel(delta: number, suffix: string, noChangeLabel: string): string {
   if (delta === 0) return noChangeLabel
   const sign = delta > 0 ? '+' : ''
-  return `${sign}${delta.toLocaleString()} ${suffix}`
+  return `${sign}${delta.toLocaleString('pt-BR')} ${suffix}`
 }

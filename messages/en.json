@@ -368,6 +368,7 @@
         "delete": "Delete"
       },
       "contactInfo": "Contact Information",
+      "name": "Name",
       "unnamed": "Unknown",
       "contactDetailsDesc": "Contact details",
       "phone": "Phone",
@@ -1500,6 +1501,7 @@
       "appearance": "Appearance",
       "whatsapp": "WhatsApp",
       "templates": "Templates",
+      "quick-replies": "Quick replies",
       "fields": "Fields & tags",
       "deals": "Deals & currency",
       "members": "Team members",

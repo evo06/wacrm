@@ -28,7 +28,7 @@ import {
   sendInteractiveButtons,
   sendInteractiveList,
   type MediaKind,
-} from '@/lib/whatsapp/meta-api';
+} from '@/lib/whatsapp/waha-api';
 import {
   validateInteractivePayload,
   interactivePayloadPreviewText,
@@ -317,7 +317,7 @@ export async function sendMessageToConversation(
       .select('*')
       .eq('account_id', accountId)
       .eq('name', templateName)
-      .eq('language', templateLanguage || 'en_US')
+      .eq('language', templateLanguage || 'pt_BR')
       .maybeSingle();
     if (data && !isMessageTemplate(data)) {
       throw new SendMessageError(
@@ -336,7 +336,7 @@ export async function sendMessageToConversation(
         accessToken,
         to: phone,
         templateName: templateName!,
-        language: templateLanguage || 'en_US',
+        language: templateLanguage || 'pt_BR',
         template: templateRow ?? undefined,
         messageParams: templateMessageParams ?? undefined,
         params: templateParams || [],
@@ -424,10 +424,9 @@ export async function sendMessageToConversation(
 
     if (lastError) throw lastError;
   } catch (err) {
-    const message =
-      err instanceof Error ? err.message : 'Unknown Meta API error';
-    console.error('[send-message] Meta send failed for all variants:', message);
-    throw new SendMessageError('meta_error', `Meta API error: ${message}`, 502);
+    const message = err instanceof Error ? err.message : 'Unknown WAHA error';
+    console.error('[send-message] WAHA send failed for all variants:', message);
+    throw new SendMessageError('waha_error', `WAHA error: ${message}`, 502);
   }
 
   if (workingPhone !== sanitizedPhone) {
@@ -470,7 +469,7 @@ export async function sendMessageToConversation(
     console.error('[send-message] error inserting sent message:', msgError);
     throw new SendMessageError(
       'db_error',
-      `Message sent to Meta but failed to save to DB: ${msgError.message}`,
+      `Message sent to WhatsApp but failed to save to DB: ${msgError.message}`,
       500
     );
   }

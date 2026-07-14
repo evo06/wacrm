@@ -1,0 +1,4 @@
+# Runtime self-hosted: ../infra/supabase/.env
+# This file only identifies the project to the Supabase CLI when it applies
+# the SQL files in supabase/migrations. It does not start a second local stack.
+project_id = "crm"

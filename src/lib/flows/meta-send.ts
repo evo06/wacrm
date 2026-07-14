@@ -6,7 +6,7 @@ import {
   type InteractiveButton,
   type InteractiveListSection,
   type MediaKind,
-} from '@/lib/whatsapp/meta-api'
+} from '@/lib/whatsapp/waha-api'
 import type { InteractiveMessagePayload } from '@/lib/whatsapp/interactive'
 import { decrypt } from '@/lib/whatsapp/encryption'
 import {
@@ -135,7 +135,7 @@ export async function engineSendText(
     ai_generated: args.aiGenerated ?? false,
   })
   if (msgErr) {
-    throw new Error(`sent to Meta but DB insert failed: ${msgErr.message}`)
+    throw new Error(`sent to WhatsApp but DB insert failed: ${msgErr.message}`)
   }
 
   await db
@@ -252,7 +252,7 @@ export async function engineSendMedia(
     status: 'sent',
   })
   if (msgErr) {
-    throw new Error(`sent to Meta but DB insert failed: ${msgErr.message}`)
+    throw new Error(`sent to WhatsApp but DB insert failed: ${msgErr.message}`)
   }
 
   await db

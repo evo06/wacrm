@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { format, formatDistanceToNow } from "date-fns";
+import { ptBR } from "date-fns/locale";
 
 import { useTranslations } from "next-intl";
 
@@ -64,32 +65,32 @@ const STATUS_META: Record<
   { label: string; classes: string; icon: typeof Clock }
 > = {
   active: {
-    label: "Active",
+    label: "Ativa",
     classes: "border-emerald-600/40 bg-emerald-500/10 text-emerald-300",
     icon: PlayCircle,
   },
   completed: {
-    label: "Completed",
+    label: "Concluída",
     classes: "border-border bg-muted text-muted-foreground",
     icon: CircleCheck,
   },
   handed_off: {
-    label: "Handed off",
+    label: "Transferida",
     classes: "border-amber-600/40 bg-amber-500/10 text-amber-300",
     icon: UserPlus,
   },
   timed_out: {
-    label: "Timed out",
+    label: "Tempo esgotado",
     classes: "border-border bg-muted/60 text-muted-foreground",
     icon: Clock,
   },
   paused_by_agent: {
-    label: "Paused by agent",
+    label: "Pausada pelo agente",
     classes: "border-border bg-muted text-muted-foreground",
     icon: PauseCircle,
   },
   failed: {
-    label: "Failed",
+    label: "Falhou",
     classes: "border-red-600/40 bg-red-500/10 text-red-300",
     icon: CircleAlert,
   },
@@ -118,7 +119,7 @@ export default function FlowRunsPage() {
           if (!cancelled) setNotFound(true);
           return;
         }
-        if (!res.ok) throw new Error(`Failed: ${res.status}`);
+        if (!res.ok) throw new Error(`Falha: ${res.status}`);
         const json = (await res.json()) as {
           flow: { id: string; name: string };
           runs: RunRow[];
@@ -231,6 +232,7 @@ function RunCard({
   const duration = run.ended_at
     ? formatDistanceToNow(new Date(run.ended_at), {
         addSuffix: false,
+        locale: ptBR,
       })
     : null;
   return (
@@ -273,7 +275,7 @@ function RunCard({
             )}
           </div>
           <div className="mt-0.5 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
-            <span>{t("started", { time: format(new Date(run.started_at), "PP p") })}</span>
+            <span>{t("started", { time: format(new Date(run.started_at), "PP p", { locale: ptBR }) })}</span>
             {run.reprompt_count > 0 && (
               <span>· {t("reprompts", { count: run.reprompt_count })}</span>
             )}
@@ -320,6 +322,18 @@ const EVENT_COLOR: Record<string, string> = {
   completed: "text-emerald-300",
 };
 
+const EVENT_LABEL: Record<string, string> = {
+  started: "iniciada",
+  node_entered: "bloco iniciado",
+  message_sent: "mensagem enviada",
+  reply_received: "resposta recebida",
+  fallback_fired: "alternativa acionada",
+  handoff: "transferência",
+  timeout: "tempo esgotado",
+  error: "erro",
+  completed: "concluída",
+};
+
 function EventLine({ ev }: { ev: EventRow }) {
   const cls = EVENT_COLOR[ev.event_type] ?? "text-muted-foreground";
   return (
@@ -328,7 +342,7 @@ function EventLine({ ev }: { ev: EventRow }) {
         {format(new Date(ev.created_at), "HH:mm:ss")}
       </span>
       <span className={cn("w-32 shrink-0 font-mono text-[10px]", cls)}>
-        {ev.event_type}
+        {EVENT_LABEL[ev.event_type] ?? ev.event_type}
       </span>
       {ev.node_key && (
         <code className="shrink-0 rounded bg-muted px-1 py-0.5 text-[10px] text-muted-foreground">

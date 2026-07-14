@@ -19,6 +19,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { format } from "date-fns";
+import { ptBR } from "date-fns/locale";
 import { useTranslations } from "next-intl";
 
 interface ContactSidebarProps {
@@ -231,7 +232,7 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
                     <div className="mt-1 flex items-center justify-between text-xs text-muted-foreground">
                       <span>
                         {deal.currency ?? "$"}
-                        {deal.value.toLocaleString()}
+                        {deal.value.toLocaleString('pt-BR')}
                       </span>
                       {deal.stage && (
                         <span
@@ -289,7 +290,7 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
                       {note.note_text}
                     </p>
                     <p className="mt-1 text-[10px] text-muted-foreground">
-                      {format(new Date(note.created_at), "MMM d, yyyy HH:mm")}
+                      {format(new Date(note.created_at), "d 'de' MMM 'de' yyyy, HH:mm", { locale: ptBR })}
                     </p>
                   </div>
                 ))}

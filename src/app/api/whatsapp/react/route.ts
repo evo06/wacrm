@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { sendReactionMessage } from '@/lib/whatsapp/meta-api';
+import { sendReactionMessage } from '@/lib/whatsapp/waha-api';
 import { decrypt } from '@/lib/whatsapp/encryption';
 import { sanitizePhoneForMeta } from '@/lib/whatsapp/phone-utils';
 import {
@@ -135,10 +135,10 @@ export async function POST(request: Request) {
       });
     } catch (err) {
       const message =
-        err instanceof Error ? err.message : 'Unknown Meta API error';
-      console.error('[whatsapp/react] Meta send failed:', message);
+        err instanceof Error ? err.message : 'Unknown WAHA error';
+      console.error('[whatsapp/react] WAHA send failed:', message);
       return NextResponse.json(
-        { error: `Meta API error: ${message}` },
+        { error: `WAHA error: ${message}` },
         { status: 502 },
       );
     }
@@ -155,7 +155,7 @@ export async function POST(request: Request) {
       if (delError) {
         console.error('[whatsapp/react] DB delete failed:', delError.message);
         return NextResponse.json(
-          { error: 'Reaction sent to Meta but DB delete failed' },
+          { error: 'Reaction sent to WhatsApp but DB delete failed' },
           { status: 500 },
         );
       }
@@ -176,7 +176,7 @@ export async function POST(request: Request) {
       if (upsertError) {
         console.error('[whatsapp/react] DB upsert failed:', upsertError.message);
         return NextResponse.json(
-          { error: 'Reaction sent to Meta but DB upsert failed' },
+          { error: 'Reaction sent to WhatsApp but DB upsert failed' },
           { status: 500 },
         );
       }

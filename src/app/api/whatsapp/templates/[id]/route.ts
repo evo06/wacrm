@@ -38,10 +38,7 @@ const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 function isDryRun(): boolean {
-  return (
-    process.env.WHATSAPP_TEMPLATES_DRY_RUN === 'true' ||
-    process.env.WHATSAPP_TEMPLATES_DRY_RUN === '1'
-  )
+  return true
 }
 
 export async function PATCH(
@@ -195,7 +192,7 @@ export async function PATCH(
         footer_text: payload.footer_text ?? null,
         buttons: payload.buttons ?? null,
         sample_values: payload.sample_values ?? null,
-        status: 'PENDING',
+        status: 'APPROVED',
         submission_error: null,
         rejection_reason: null,
         last_submitted_at: new Date().toISOString(),

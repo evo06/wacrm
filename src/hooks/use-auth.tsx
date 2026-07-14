@@ -13,6 +13,8 @@ import {
 import { createClient } from "@/lib/supabase/client";
 import type { User } from "@supabase/supabase-js";
 import { DEFAULT_CURRENCY } from "@/lib/currency";
+import type { LocalIdentity } from "@/lib/auth/local-session";
+import { LOCAL_AUTH_CLIENT_ENABLED } from "@/lib/auth/local-mode";
 import {
   canEditSettings as canEditSettingsFor,
   canManageMembers as canManageMembersFor,
@@ -105,6 +107,19 @@ interface AuthContextValue {
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
+const localAuthEnabled = LOCAL_AUTH_CLIENT_ENABLED;
+
+function localUser(identity: LocalIdentity): User {
+  return {
+    id: identity.userId,
+    aud: "authenticated",
+    role: "authenticated",
+    email: identity.email,
+    app_metadata: { provider: "local", providers: ["local"] },
+    user_metadata: { username: identity.username },
+    created_at: new Date(0).toISOString(),
+  };
+}
 
 /**
  * AuthProvider — wrap this around the dashboard layout.
@@ -226,8 +241,58 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    const supabase = createClient();
     let mounted = true;
+
+    if (localAuthEnabled) {
+      const initLocal = async () => {
+        try {
+          const response = await fetch("/api/auth/local/session", {
+            cache: "no-store",
+          });
+          if (!response.ok) throw new Error("Local session is not valid");
+          const result = (await response.json()) as {
+            authenticated: true;
+            identity: LocalIdentity;
+          };
+          if (!mounted) return;
+
+          const identity = result.identity;
+          setUser(localUser(identity));
+          setProfile({
+            id: identity.userId,
+            full_name: identity.displayName,
+            email: identity.email,
+            avatar_url: null,
+            role: "owner",
+            beta_features: [],
+            account_id: identity.accountId,
+            account_role: "owner",
+          });
+          setAccount({
+            id: identity.accountId,
+            name: identity.accountName,
+            default_currency: identity.defaultCurrency,
+          });
+        } catch {
+          if (!mounted) return;
+          setUser(null);
+          setProfile(null);
+          setAccount(null);
+        } finally {
+          if (mounted) {
+            setLoading(false);
+            setProfileLoading(false);
+          }
+        }
+      };
+
+      void initLocal();
+      return () => {
+        mounted = false;
+      };
+    }
+
+    const supabase = createClient();
 
     const safetyTimer = setTimeout(() => {
       if (mounted) {
@@ -301,6 +366,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [fetchProfile]);
 
   const signOut = useCallback(async () => {
+    if (localAuthEnabled) {
+      await fetch("/api/auth/local/logout", { method: "POST" });
+      setUser(null);
+      setProfile(null);
+      setAccount(null);
+      window.location.href = "/login";
+      return;
+    }
+
     const supabase = createClient();
     await supabase.auth.signOut();
     setUser(null);
@@ -310,6 +384,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const refreshProfile = useCallback(async () => {
+    if (localAuthEnabled) return;
     if (!user?.id) return;
     await fetchProfile(user.id);
   }, [user?.id, fetchProfile]);

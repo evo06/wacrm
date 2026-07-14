@@ -114,6 +114,9 @@ export function rateLimitResponse(result: RateLimitResult): NextResponse {
 
 /** Preconfigured budgets, tweak here not at call sites. */
 export const RATE_LIMITS = {
+  /** Local username/password login. A tight per-IP window slows down
+   *  guessing while still allowing ordinary typing mistakes. */
+  localLogin: { limit: 5, windowMs: 5 * 60_000 },
   /** Individual message send. 60/min per user = one per second
    *  sustained, comfortable for a live human typing. */
   send: { limit: 60, windowMs: 60_000 },

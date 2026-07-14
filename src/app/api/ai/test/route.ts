@@ -1,8 +1,13 @@
 import { NextResponse } from 'next/server'
 import { requireRole, toErrorResponse } from '@/lib/auth/account'
-import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit'
+import {
+  checkRateLimit,
+  rateLimitResponse,
+  RATE_LIMITS,
+} from '@/lib/rate-limit'
 import { decrypt } from '@/lib/whatsapp/encryption'
 import { validateAiCredentials } from '@/lib/ai/validate'
+import { serverManagedApiKey } from '@/lib/ai/server-key'
 import { AiError, type AiProvider } from '@/lib/ai/types'
 
 /**
@@ -23,13 +28,20 @@ export async function POST(request: Request) {
 
     const body = await request.json().catch(() => null)
     if (!body || typeof body !== 'object') {
-      return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })
+      return NextResponse.json(
+        { error: 'Invalid request body' },
+        { status: 400 },
+      )
     }
 
     const provider = body.provider as AiProvider
-    if (provider !== 'openai' && provider !== 'anthropic') {
+    if (
+      provider !== 'openai' &&
+      provider !== 'anthropic' &&
+      provider !== 'openrouter'
+    ) {
       return NextResponse.json(
-        { error: 'provider must be "openai" or "anthropic"' },
+        { error: 'provider must be "openai", "anthropic", or "openrouter"' },
         { status: 400 },
       )
     }
@@ -39,7 +51,7 @@ export async function POST(request: Request) {
     }
 
     const rawKey = typeof body.api_key === 'string' ? body.api_key.trim() : ''
-    let apiKeyPlain = rawKey
+    let apiKeyPlain = rawKey || serverManagedApiKey(provider) || ''
     if (!apiKeyPlain) {
       const { data: existing } = await supabase
         .from('ai_configs')
@@ -56,7 +68,9 @@ export async function POST(request: Request) {
         apiKeyPlain = decrypt(existing.api_key)
       } catch {
         return NextResponse.json(
-          { error: 'Stored API key could not be decrypted — re-enter your key.' },
+          {
+            error: 'Stored API key could not be decrypted — re-enter your key.',
+          },
           { status: 400 },
         )
       }

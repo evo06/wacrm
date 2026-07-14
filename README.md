@@ -23,17 +23,17 @@ clone or fork it to run your own CRM.
 
 ## What you get out of the box
 
-- **Shared inbox** on the official WhatsApp Business API — multiple
+- **Shared inbox** connected through self-hosted WAHA — multiple
   agents working one number, per-conversation assignment, status, and
   notes.
 - **Contacts + tags + custom fields**, CSV import, deduplication.
 - **Sales pipelines** (Kanban) with deals linked to conversations.
-- **Broadcasts** with Meta-approved templates, delivery + read
+- **Broadcasts** with local text templates, delivery + read
   tracking, per-recipient variable substitution.
 - **No-code automations** — triggers on inbound messages, new
   contacts, keywords, or schedule; conditional branches, waits,
   tags, webhooks. Visual builder.
-- **AI reply assistant** — bring your own OpenAI or Anthropic key
+- **AI reply assistant** — bring your own OpenAI, Anthropic, or OpenRouter key
   (stored encrypted; no per-seat AI fee, your data stays yours).
   One-click AI-drafted replies in the inbox, plus an optional
   auto-reply bot with a per-conversation cap and clean human handoff.
@@ -83,12 +83,36 @@ in an afternoon and make yours.
 git clone https://github.com/<your-username>/wacrm.git
 cd wacrm
 npm install
-cp .env.local.example .env.local   # fill in Supabase + Meta creds
+cp .env.local.example .env.local   # fill in Supabase, WAHA, and OpenRouter
+npm run waha:up                    # starts WAHA on localhost:3001
 npm run dev
 ```
 
-Open <http://localhost:3000>. You'll be redirected to `/login` (or
+The custom `LOCAL_AUTH_*` gate does not create a Supabase JWT and therefore
+cannot access RLS-protected CRM data. Keep it disabled when the CRM uses
+Supabase Auth, including the self-hosted setup below.
+
+Open <http://localhost:3002>. You'll be redirected to `/login` (or
 `/dashboard` if already signed in).
+
+### Supabase self-hosted on Windows
+
+This checkout includes the official persistent Docker Compose stack in
+`infra/supabase`. It is bound to `127.0.0.1`, so the database and APIs are not
+published to the local network.
+
+```powershell
+npm run supabase:up       # start and wait for healthy services
+npm run supabase:status   # show service health
+npm run supabase:logs     # inspect recent logs
+npm run supabase:down     # stop without deleting database or Storage data
+```
+
+The API and Studio are available through <http://127.0.0.1:8000>, Postgres is
+available on `127.0.0.1:5432`, and the CRM remains on
+<http://127.0.0.1:3002>. Never use `infra/supabase/reset.sh`, `db reset`, or
+`docker compose down -v` on a persistent installation because those commands
+destroy local data.
 
 ## 🚀 Deploy on Hostinger (recommended)
 
@@ -126,7 +150,7 @@ Kubernetes cluster.
 1. **Fork** this repo on GitHub.
 2. In **hPanel → Websites → Create**, pick **Node.js** and connect
    your fork.
-3. Paste your Supabase + Meta env vars into hPanel.
+3. Configure Supabase, WAHA, and OpenRouter environment variables.
 4. Push to `main`. Hostinger builds and serves it. Done.
 
 Full walkthrough with screenshots:
@@ -156,7 +180,7 @@ Key pages:
 
 - **App** — Next.js 16 (App Router), React 19, TypeScript, Tailwind v4.
 - **Data** — Supabase (Postgres + Auth + Storage + RLS).
-- **WhatsApp** — Meta Cloud API (official WhatsApp Business API).
+- **WhatsApp** — WAHA Core (`devlikeapro/waha`), self-hosted with Docker.
 
 ## Contributing
 

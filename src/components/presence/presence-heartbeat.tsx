@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
+import { LOCAL_AUTH_CLIENT_ENABLED } from "@/lib/auth/local-mode";
 import { HEARTBEAT_MS, IDLE_AFTER_MS, type StoredPresence } from "@/lib/presence";
 
 /**
@@ -27,6 +28,10 @@ export function PresenceHeartbeat() {
   const lastActivityRef = useRef<number>(0);
 
   useEffect(() => {
+    // A local-only login has no Supabase user/RPC session. Presence is
+    // unavailable in that mode, so do not open a failing network loop.
+    if (LOCAL_AUTH_CLIENT_ENABLED) return;
+
     // Hold off until the account is known. Beating during the brief
     // window on a fresh signup — authed but profile/account row not yet
     // created — would make touch_presence raise "No account for caller"
@@ -35,6 +40,8 @@ export function PresenceHeartbeat() {
 
     const supabase = createClient();
     let cancelled = false;
+    let inFlight = false;
+    let failureReported = false;
     let lastBeatAt = 0;
     lastActivityRef.current = Date.now();
 
@@ -49,20 +56,44 @@ export function PresenceHeartbeat() {
     };
 
     const beat = async () => {
-      if (cancelled) return;
+      if (cancelled || inFlight) return;
       // Coalesce bursts: a tab refocus fires visibilitychange AND focus
       // together, so skip a beat within 1s of the last to avoid two RPCs
       // in the same frame. The 30s interval is never affected.
       const t = Date.now();
       if (t - lastBeatAt < 1_000) return;
       lastBeatAt = t;
-      const { error } = await supabase.rpc("touch_presence", {
-        p_status: currentStatus(),
-      });
-      if (error && !cancelled) {
-        // Non-fatal: presence is best-effort. Log once per failure so a
-        // misconfigured RPC is visible without spamming.
-        console.error("[PresenceHeartbeat] touch_presence failed:", error.message);
+
+      inFlight = true;
+      try {
+        const { error } = await supabase.rpc("touch_presence", {
+          p_status: currentStatus(),
+        });
+        if (error) throw error;
+
+        // A successful beat ends the current outage. If connectivity is
+        // lost again later, report that new incident once.
+        failureReported = false;
+      } catch (error) {
+        if (!cancelled && !failureReported) {
+          failureReported = true;
+          const message =
+            error instanceof Error
+              ? error.message
+              : typeof error === "object" &&
+                  error !== null &&
+                  "message" in error &&
+                  typeof error.message === "string"
+                ? error.message
+                : "unknown error";
+
+          // Presence must never break the dashboard. A warning is enough
+          // for this best-effort feature and avoids Next.js treating a
+          // temporary network outage as an application console error.
+          console.warn("[PresenceHeartbeat] heartbeat unavailable:", message);
+        }
+      } finally {
+        inFlight = false;
       }
     };
 

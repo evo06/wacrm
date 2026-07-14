@@ -1,7 +1,63 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
+import {
+  isLocalAuthEnabled,
+  LOCAL_SESSION_COOKIE,
+  verifyLocalSessionToken,
+} from '@/lib/auth/local-session'
+
+const authPaths = ['/login', '/signup', '/forgot-password']
+const protectedPaths = [
+  '/dashboard',
+  '/inbox',
+  '/notifications',
+  '/contacts',
+  '/pipelines',
+  '/broadcasts',
+  '/automations',
+  '/flows',
+  '/agents',
+  '/settings',
+]
 
 export async function middleware(request: NextRequest) {
+  // Local installations can use a signed, HttpOnly session without
+  // contacting Supabase Auth. This is an optimistic route gate; API
+  // handlers and data access still keep their own authorization checks.
+  if (isLocalAuthEnabled()) {
+    const authenticated = await verifyLocalSessionToken(
+      request.cookies.get(LOCAL_SESSION_COOKIE)?.value,
+    )
+    const pathname = request.nextUrl.pathname
+
+    if (authenticated && authPaths.includes(pathname)) {
+      const url = request.nextUrl.clone()
+      url.pathname = '/dashboard'
+      url.search = ''
+      return NextResponse.redirect(url)
+    }
+
+    if (!authenticated && authPaths.includes(pathname) && pathname !== '/login') {
+      const url = request.nextUrl.clone()
+      url.pathname = '/login'
+      url.search = ''
+      return NextResponse.redirect(url)
+    }
+
+    if (!authenticated && protectedPaths.some(path => pathname.startsWith(path))) {
+      const url = request.nextUrl.clone()
+      url.pathname = '/login'
+      return NextResponse.redirect(url)
+    }
+
+    if (!authenticated && pathname.startsWith('/api/whatsapp/') &&
+        !pathname.includes('/webhook')) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    return NextResponse.next({ request })
+  }
+
   let supabaseResponse = NextResponse.next({ request })
 
   const supabase = createServerClient(
@@ -12,9 +68,12 @@ export async function middleware(request: NextRequest) {
         getAll() {
           return request.cookies.getAll()
         },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) => request.cookies.set(name, value))
+        setAll(cookiesToSet, headersToSet) {
+          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
           supabaseResponse = NextResponse.next({ request })
+          Object.entries(headersToSet).forEach(([name, value]) =>
+            supabaseResponse.headers.set(name, value)
+          )
           cookiesToSet.forEach(({ name, value, options }) =>
             supabaseResponse.cookies.set(name, value, options)
           )
@@ -38,6 +97,10 @@ export async function middleware(request: NextRequest) {
   const withRefreshedCookies = <T extends NextResponse>(response: T): T => {
     supabaseResponse.cookies.getAll().forEach((cookie) => {
       response.cookies.set(cookie)
+    })
+    ;['cache-control', 'expires', 'pragma'].forEach((name) => {
+      const value = supabaseResponse.headers.get(name)
+      if (value) response.headers.set(name, value)
     })
     return response
   }
@@ -70,7 +133,6 @@ export async function middleware(request: NextRequest) {
   }
 
   // Protected pages - redirect to login if not authenticated
-  const protectedPaths = ['/dashboard', '/inbox', '/contacts', '/pipelines', '/broadcasts', '/automations', '/settings']
   if (!user && protectedPaths.some(path => request.nextUrl.pathname.startsWith(path))) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'

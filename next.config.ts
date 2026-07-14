@@ -3,6 +3,36 @@ import createNextIntlPlugin from "next-intl/plugin";
 
 const withNextIntl = createNextIntlPlugin("./src/i18n/request.ts");
 
+const supabaseHttpOrigin = (() => {
+  try {
+    return new URL(process.env.NEXT_PUBLIC_SUPABASE_URL ?? "").origin;
+  } catch {
+    return "";
+  }
+})();
+
+const supabaseRealtimeOrigin = supabaseHttpOrigin
+  ? supabaseHttpOrigin.replace(/^http:/, "ws:").replace(/^https:/, "wss:")
+  : "";
+
+const PROTECTED_ROUTES = [
+  "/dashboard",
+  "/inbox",
+  "/notifications",
+  "/contacts",
+  "/pipelines",
+  "/broadcasts",
+  "/automations",
+  "/flows",
+  "/agents",
+  "/settings",
+] as const;
+
+const PRIVATE_PAGE_CACHE_HEADER = {
+  key: "Cache-Control",
+  value: "private, no-cache, no-store, max-age=0, must-revalidate",
+} as const;
+
 /**
  * Baseline security headers applied to every response.
  *
@@ -48,14 +78,14 @@ const SECURITY_HEADERS = [
       // Supabase public-bucket avatars, contact avatars (arbitrary
       // https URLs paste-able from the UI), OG images, data URLs for
       // tiny inline assets.
-      "img-src 'self' data: blob: https:",
+      `img-src 'self' data: blob: https:${supabaseHttpOrigin ? ` ${supabaseHttpOrigin}` : ""}`,
       // Outbound media previews (blob: from MediaRecorder + file picker)
       // and Supabase public-bucket audio/video the inbox renders.
-      "media-src 'self' blob: https://*.supabase.co",
+      `media-src 'self' blob: https://*.supabase.co${supabaseHttpOrigin ? ` ${supabaseHttpOrigin}` : ""}`,
       "font-src 'self' data:",
       // Supabase REST + realtime (WSS). All Meta API calls happen
       // server-side, so graph.facebook.com does not belong here.
-      "connect-src 'self' https://*.supabase.co wss://*.supabase.co",
+      `connect-src 'self' https://*.supabase.co wss://*.supabase.co${supabaseHttpOrigin ? ` ${supabaseHttpOrigin}` : ""}${supabaseRealtimeOrigin ? ` ${supabaseRealtimeOrigin}` : ""}`,
       "frame-ancestors 'none'",
       "base-uri 'self'",
       "form-action 'self'",
@@ -64,6 +94,12 @@ const SECURITY_HEADERS = [
 ] as const;
 
 const nextConfig: NextConfig = {
+  // Keep Turbopack scoped to this checkout. On machines with another
+  // package-lock.json higher in the directory tree, automatic root
+  // detection can otherwise make Next.js scan outside the project.
+  turbopack: {
+    root: process.cwd(),
+  },
   /**
    * Cache-Control policy.
    *
@@ -117,6 +153,10 @@ const nextConfig: NextConfig = {
           },
         ],
       },
+      ...PROTECTED_ROUTES.flatMap((source) => [
+        { source, headers: [PRIVATE_PAGE_CACHE_HEADER] },
+        { source: `${source}/:path*`, headers: [PRIVATE_PAGE_CACHE_HEADER] },
+      ]),
       {
         // Security headers on every response, including /_next/static
         // assets (nosniff matters there) and /api/* (HSTS + referrer-

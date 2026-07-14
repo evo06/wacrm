@@ -20,7 +20,12 @@ vi.mock("@supabase/ssr", () => ({
     _url: string,
     _key: string,
     opts: {
-      cookies: { setAll: (c: typeof refreshedCookies) => void };
+      cookies: {
+        setAll: (
+          c: typeof refreshedCookies,
+          headers: Record<string, string>,
+        ) => void;
+      };
     },
   ) => ({
     auth: {
@@ -28,7 +33,14 @@ vi.mock("@supabase/ssr", () => ({
       // refreshed inside getUser(), which rotates the refresh token and
       // pushes the new cookies through setAll() before resolving.
       getUser: async () => {
-        if (refreshedCookies.length) opts.cookies.setAll(refreshedCookies);
+        if (refreshedCookies.length) {
+          opts.cookies.setAll(refreshedCookies, {
+            "Cache-Control":
+              "private, no-cache, no-store, must-revalidate, max-age=0",
+            Expires: "0",
+            Pragma: "no-cache",
+          });
+        }
         return { data: { user: mockUser } };
       },
     },
@@ -41,6 +53,8 @@ const { middleware } = await import("./middleware");
 beforeEach(() => {
   process.env.NEXT_PUBLIC_SUPABASE_URL = "https://test.supabase.co";
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = "anon-key";
+  process.env.LOCAL_AUTH_ENABLED = "false";
+  process.env.NEXT_PUBLIC_LOCAL_AUTH_ENABLED = "false";
   mockUser = null;
   refreshedCookies = [];
 });
@@ -69,6 +83,7 @@ describe("middleware — refreshed auth cookies survive redirects", () => {
     // replaying the now-consumed refresh token and the session wedges until
     // the user manually clears cookies.
     expect(res.cookies.get(ROTATED.name)?.value).toBe(ROTATED.value);
+    expect(res.headers.get("cache-control")).toContain("no-store");
   });
 
   it("carries the rotated token when redirecting an unauth user to /login", async () => {
@@ -84,6 +99,7 @@ describe("middleware — refreshed auth cookies survive redirects", () => {
     expect(res.status).toBe(307);
     expect(res.headers.get("location")).toContain("/login");
     expect(res.cookies.get(ROTATED.name)?.value).toBe("cleared");
+    expect(res.headers.get("cache-control")).toContain("no-store");
   });
 
   it("redirects a signed-in user with an invite token to /join/<token>", async () => {

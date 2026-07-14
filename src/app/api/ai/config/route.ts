@@ -4,10 +4,15 @@ import {
   requireRole,
   toErrorResponse,
 } from '@/lib/auth/account'
-import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit'
+import {
+  checkRateLimit,
+  rateLimitResponse,
+  RATE_LIMITS,
+} from '@/lib/rate-limit'
 import { encrypt, decrypt } from '@/lib/whatsapp/encryption'
 import { validateAiCredentials } from '@/lib/ai/validate'
 import { embedTexts } from '@/lib/ai/embeddings'
+import { serverManagedApiKey } from '@/lib/ai/server-key'
 import { AiError, type AiProvider } from '@/lib/ai/types'
 
 function bad(message: string) {
@@ -24,6 +29,7 @@ function bad(message: string) {
 export async function GET() {
   try {
     const { supabase, accountId } = await getCurrentAccount()
+    const hasServerOpenRouterKey = !!serverManagedApiKey('openrouter')
 
     const { data, error } = await supabase
       .from('ai_configs')
@@ -43,7 +49,12 @@ export async function GET() {
       )
     }
 
-    if (!data) return NextResponse.json({ configured: false })
+    if (!data) {
+      return NextResponse.json({
+        configured: false,
+        has_server_openrouter_key: hasServerOpenRouterKey,
+      })
+    }
     // The keys are selected only to derive the has_* flags; neither is
     // returned to the client.
     const { api_key, embeddings_api_key, ...safe } = data
@@ -51,6 +62,7 @@ export async function GET() {
       configured: true,
       has_key: !!api_key,
       has_embeddings_key: !!embeddings_api_key,
+      has_server_openrouter_key: hasServerOpenRouterKey,
       ...safe,
     })
   } catch (err) {
@@ -78,8 +90,12 @@ export async function POST(request: Request) {
     if (!body || typeof body !== 'object') return bad('Invalid request body')
 
     const provider = body.provider as AiProvider
-    if (provider !== 'openai' && provider !== 'anthropic') {
-      return bad('provider must be "openai" or "anthropic"')
+    if (
+      provider !== 'openai' &&
+      provider !== 'anthropic' &&
+      provider !== 'openrouter'
+    ) {
+      return bad('provider must be "openai", "anthropic", or "openrouter"')
     }
     const model = typeof body.model === 'string' ? body.model.trim() : ''
     if (!model) return bad('model is required')
@@ -100,7 +116,9 @@ export async function POST(request: Request) {
     // stranger); an empty string / null means "leave unassigned" (the
     // shared queue). Absent → left unchanged on update below.
     const rawHandoff =
-      typeof body.handoff_agent_id === 'string' ? body.handoff_agent_id.trim() : ''
+      typeof body.handoff_agent_id === 'string'
+        ? body.handoff_agent_id.trim()
+        : ''
     const handoffProvided = 'handoff_agent_id' in body
     let handoffAgentId: string | null = null
     if (rawHandoff) {
@@ -110,7 +128,8 @@ export async function POST(request: Request) {
         .eq('account_id', accountId)
         .eq('user_id', rawHandoff)
         .maybeSingle()
-      if (!member) return bad('handoff_agent_id must be a member of this account')
+      if (!member)
+        return bad('handoff_agent_id must be a member of this account')
       handoffAgentId = rawHandoff
     }
 
@@ -132,9 +151,12 @@ export async function POST(request: Request) {
       .eq('account_id', accountId)
       .maybeSingle()
 
+    const managedKey = serverManagedApiKey(provider)
     let apiKeyPlain: string
     if (rawKey) {
       apiKeyPlain = rawKey
+    } else if (managedKey) {
+      apiKeyPlain = managedKey
     } else if (existing?.api_key) {
       try {
         apiKeyPlain = decrypt(existing.api_key)
@@ -197,7 +219,9 @@ export async function POST(request: Request) {
       }
     }
 
-    const encryptedKey = rawKey ? encrypt(rawKey) : null
+    const shouldPersistResolvedKey =
+      rawKey !== '' || !existing || provider !== existing.provider
+    const encryptedKey = shouldPersistResolvedKey ? encrypt(apiKeyPlain) : null
     const shared: Record<string, unknown> = {
       provider,
       model,
@@ -231,7 +255,7 @@ export async function POST(request: Request) {
       const { error: insErr } = await supabase.from('ai_configs').insert({
         account_id: accountId,
         created_by: userId,
-        api_key: encryptedKey, // guaranteed non-null: rawKey required when no existing row
+        api_key: encryptedKey, // non-null: a first insert always persists the resolved key
         ...shared,
       })
       if (insErr) {

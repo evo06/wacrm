@@ -13,12 +13,18 @@
 # testing
 /coverage
 
+# Supabase CLI local state
+/supabase/.temp/
+
 # next.js
 /.next/
 /out/
 
 # production
 /build
+
+# Local WAHA session and downloaded media
+/.waha/
 
 # misc
 .DS_Store

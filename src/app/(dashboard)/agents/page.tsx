@@ -17,7 +17,7 @@ export default function AgentsPage() {
   const [tab, setTab] = useState<Tab>('playground');
   const [decided, setDecided] = useState(false);
 
-  // Land first-time users on Setup, returning users on the Playground.
+  // Leva novos usuários à configuração e os demais ao ambiente de testes.
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -41,12 +41,12 @@ export default function AgentsPage() {
       <div className="flex items-center gap-2">
         <Bot className="h-6 w-6 text-primary" />
         <h1 className="text-2xl font-bold tracking-tight text-foreground">
-          AI Agents
+          Agentes de IA
         </h1>
       </div>
       <p className="mt-1 text-sm text-muted-foreground">
-        Your bring-your-own-key AI agent — set it up, then test it in the
-        playground before it replies to customers in the inbox.
+        Configure seu agente de IA com sua própria chave e teste as respostas
+        antes que ele atenda clientes na caixa de entrada.
       </p>
 
       {decided && (
@@ -57,14 +57,14 @@ export default function AgentsPage() {
         >
           <TabsList>
             <TabsTrigger value="playground">
-              <Sparkles className="mr-1.5 h-4 w-4" /> Playground
+              <Sparkles className="mr-1.5 h-4 w-4" /> Ambiente de testes
             </TabsTrigger>
             <TabsTrigger value="setup">
-              <Settings2 className="mr-1.5 h-4 w-4" /> Setup
+              <Settings2 className="mr-1.5 h-4 w-4" /> Configuração
             </TabsTrigger>
             {canViewUsage && (
               <TabsTrigger value="usage">
-                <BarChart3 className="mr-1.5 h-4 w-4" /> Usage
+                <BarChart3 className="mr-1.5 h-4 w-4" /> Uso
               </TabsTrigger>
             )}
           </TabsList>

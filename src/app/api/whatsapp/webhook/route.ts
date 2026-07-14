@@ -1,7 +1,9 @@
 import { NextResponse, after } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { createHmac, timingSafeEqual } from 'node:crypto'
 import { decrypt, encrypt, isLegacyFormat } from '@/lib/whatsapp/encryption'
-import { getMediaUrl, downloadMedia } from '@/lib/whatsapp/meta-api'
+import { getMediaUrl } from '@/lib/whatsapp/meta-api'
+import { getWahaEnvironment } from '@/lib/whatsapp/waha-api'
 import { normalizePhone } from '@/lib/whatsapp/phone-utils'
 import { findExistingContact, isUniqueViolation } from '@/lib/contacts/dedupe'
 import { verifyMetaWebhookSignature } from '@/lib/whatsapp/webhook-signature'
@@ -59,6 +61,30 @@ interface WhatsAppMessage {
   }
   /** Present when the customer swipe-replies to one of our messages. */
   context?: { id: string }
+  wahaMedia?: { url: string; mimetype?: string; filename?: string }
+}
+
+interface WahaWebhook {
+  event: 'message' | 'message.ack' | 'message.reaction' | 'session.status' | string
+  session: string
+  metadata?: { account_id?: string }
+  payload?: {
+    id?: string
+    timestamp?: number
+    from?: string
+    to?: string
+    fromMe?: boolean
+    body?: string
+    hasMedia?: boolean
+    media?: { url?: string; mimetype?: string; filename?: string }
+    ack?: number
+    ackName?: string
+    status?: string
+    replyTo?: { id?: string } | null
+    reaction?: { text?: string; messageId?: string }
+    notifyName?: string
+    _data?: { notifyName?: string; pushName?: string }
+  }
 }
 
 interface WhatsAppWebhookEntry {
@@ -173,6 +199,27 @@ export async function POST(request: Request) {
   // Read raw body first so we can HMAC-verify the exact bytes Meta
   // signed. request.json() would re-encode and break the signature.
   const rawBody = await request.text()
+
+  try {
+    const maybeWaha = JSON.parse(rawBody) as unknown
+    if (isWahaWebhook(maybeWaha)) {
+      if (!verifyWahaWebhookSignature(rawBody, request.headers.get('x-webhook-hmac'))) {
+        console.warn('[webhook] rejected WAHA request with invalid signature')
+        return NextResponse.json({ error: 'Invalid signature' }, { status: 401 })
+      }
+      after(async () => {
+        try {
+          await processWahaWebhook(maybeWaha)
+        } catch (error) {
+          console.error('Error processing WAHA webhook:', error)
+        }
+      })
+      return NextResponse.json({ status: 'received' }, { status: 200 })
+    }
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
+  }
+
   const signature = request.headers.get('x-hub-signature-256')
 
   if (!verifyMetaWebhookSignature(rawBody, signature)) {
@@ -213,6 +260,161 @@ export async function POST(request: Request) {
   })
 
   return NextResponse.json({ status: 'received' }, { status: 200 })
+}
+
+function isWahaWebhook(value: unknown): value is WahaWebhook {
+  return Boolean(
+    value &&
+      typeof value === 'object' &&
+      typeof (value as WahaWebhook).event === 'string' &&
+      typeof (value as WahaWebhook).session === 'string',
+  )
+}
+
+function verifyWahaWebhookSignature(rawBody: string, signature: string | null): boolean {
+  let secret = ''
+  try {
+    secret = getWahaEnvironment().webhookSecret
+  } catch {
+    return false
+  }
+  if (!secret || !signature || !/^[0-9a-f]{128}$/i.test(signature)) return false
+  const expected = createHmac('sha512', secret).update(rawBody).digest('hex')
+  return timingSafeEqual(Buffer.from(expected, 'hex'), Buffer.from(signature, 'hex'))
+}
+
+function wahaContentType(payload: NonNullable<WahaWebhook['payload']>): WhatsAppMessage['type'] {
+  if (!payload.hasMedia) return 'text'
+  const mime = payload.media?.mimetype?.toLowerCase() || ''
+  if (mime.startsWith('image/')) return 'image'
+  if (mime.startsWith('video/')) return 'video'
+  if (mime.startsWith('audio/')) return 'audio'
+  return 'document'
+}
+
+async function processWahaWebhook(body: WahaWebhook) {
+  const payload = body.payload || {}
+  const query = supabaseAdmin()
+    .from('whatsapp_config')
+    .select('*')
+    .eq('phone_number_id', body.session)
+  if (body.metadata?.account_id) query.eq('account_id', body.metadata.account_id)
+  const { data: configs, error } = await query.limit(2)
+  if (error || !configs?.length) {
+    console.error('[waha/webhook] no matching CRM configuration:', body.session, error)
+    return
+  }
+  if (configs.length > 1) {
+    console.error('[waha/webhook] session is linked to multiple CRM accounts:', body.session)
+    return
+  }
+  const config = configs[0]
+
+  if (body.event === 'session.status') {
+    const status = payload.status || 'UNKNOWN'
+    await supabaseAdmin()
+      .from('whatsapp_config')
+      .update({
+        status: status === 'WORKING' ? 'connected' : 'disconnected',
+        connected_at: status === 'WORKING' ? new Date().toISOString() : null,
+        registered_at: status === 'WORKING' ? new Date().toISOString() : null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', config.id)
+    return
+  }
+
+  if (body.event === 'message.ack' && payload.id) {
+    const mapped = {
+      ERROR: 'failed',
+      PENDING: 'pending',
+      SERVER: 'sent',
+      DEVICE: 'delivered',
+      READ: 'read',
+      PLAYED: 'read',
+    }[payload.ackName || '']
+    if (mapped) {
+      await handleStatusUpdate({
+        id: payload.id,
+        status: mapped,
+        timestamp: String(payload.timestamp || Date.now() / 1000),
+        recipient_id: payload.from || '',
+      })
+    }
+    return
+  }
+
+  if (!payload.from || payload.fromMe || payload.from.endsWith('@g.us') || !payload.id) return
+  const contactName =
+    payload.notifyName || payload._data?.notifyName || payload._data?.pushName || payload.from
+  const contact = {
+    profile: { name: contactName },
+    wa_id: payload.from.replace(/@.+$/, ''),
+  }
+
+  let message: WhatsAppMessage
+  if (body.event === 'message.reaction') {
+    if (!payload.reaction?.messageId) return
+    message = {
+      id: payload.id,
+      from: payload.from,
+      timestamp: String(payload.timestamp || Date.now() / 1000),
+      type: 'reaction',
+      reaction: {
+        message_id: payload.reaction.messageId,
+        emoji: payload.reaction.text || '',
+      },
+    }
+  } else if (body.event === 'message') {
+    const type = wahaContentType(payload)
+    message = {
+      id: payload.id,
+      from: payload.from,
+      timestamp: String(payload.timestamp || Date.now() / 1000),
+      type,
+      text: type === 'text' ? { body: payload.body || '' } : undefined,
+      context: payload.replyTo?.id ? { id: payload.replyTo.id } : undefined,
+      wahaMedia: payload.media?.url
+        ? {
+            url: payload.media.url,
+            mimetype: payload.media.mimetype,
+            filename: payload.media.filename,
+          }
+        : undefined,
+    }
+    if (type === 'image') {
+      message.image = {
+        id: payload.id,
+        mime_type: payload.media?.mimetype || 'image/jpeg',
+        caption: payload.body,
+      }
+    } else if (type === 'video') {
+      message.video = {
+        id: payload.id,
+        mime_type: payload.media?.mimetype || 'video/mp4',
+        caption: payload.body,
+      }
+    } else if (type === 'audio') {
+      message.audio = { id: payload.id, mime_type: payload.media?.mimetype || 'audio/ogg' }
+    } else if (type === 'document') {
+      message.document = {
+        id: payload.id,
+        mime_type: payload.media?.mimetype || 'application/octet-stream',
+        filename: payload.media?.filename,
+        caption: payload.body,
+      }
+    }
+  } else {
+    return
+  }
+
+  await processMessage(
+    message,
+    contact,
+    config.account_id,
+    config.user_id,
+    decrypt(config.access_token),
+  )
 }
 
 async function processWebhook(body: { entry?: WhatsAppWebhookEntry[] }) {
@@ -846,6 +1048,21 @@ async function parseMessageContent(
   // the args swapped, so every verification hit an invalid Meta URL and
   // fell through to the catch block, leaving mediaUrl as null. That's
   // why images showed up as empty bubbles in the inbox.
+  if (message.wahaMedia?.url) {
+    const contentText =
+      message.image?.caption ||
+      message.video?.caption ||
+      message.document?.caption ||
+      message.document?.filename ||
+      null
+    return {
+      contentText,
+      mediaUrl: `/api/whatsapp/media/waha?path=${encodeURIComponent(message.wahaMedia.url)}`,
+      mediaType: message.wahaMedia.mimetype || null,
+      interactiveReplyId: null,
+    }
+  }
+
   const verifyAndBuildUrl = async (
     mediaId: string
   ): Promise<string | null> => {

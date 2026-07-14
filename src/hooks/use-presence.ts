@@ -5,6 +5,7 @@ import type { RealtimeChannel } from "@supabase/supabase-js";
 
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
+import { LOCAL_AUTH_CLIENT_ENABLED } from "@/lib/auth/local-mode";
 import {
   derivePresence,
   type PresenceRow,
@@ -53,7 +54,7 @@ export function usePresence(enabled = true): UsePresenceResult {
   // `now` ticks so derivePresence re-evaluates staleness over time.
   const [now, setNow] = useState(() => Date.now());
 
-  const active = enabled && !!accountId;
+  const active = !LOCAL_AUTH_CLIENT_ENABLED && enabled && !!accountId;
 
   useEffect(() => {
     if (!active || !accountId) return;

@@ -360,7 +360,7 @@ export function useBroadcastSending(): UseBroadcastSendingReturn {
           account_id: accountId,
           name: payload.name,
           template_name: payload.template.name,
-          template_language: payload.template.language ?? 'en_US',
+          template_language: payload.template.language ?? 'pt_BR',
           template_variables: payload.variables,
           audience_filter: {
             type: payload.audience.type,
@@ -480,7 +480,7 @@ export function useBroadcastSending(): UseBroadcastSendingReturn {
             body: JSON.stringify({
               recipients: apiRecipients,
               template_name: payload.template.name,
-              template_language: payload.template.language ?? 'en_US',
+              template_language: payload.template.language ?? 'pt_BR',
             }),
           });
 

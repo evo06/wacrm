@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { sendTemplateMessage } from '@/lib/whatsapp/meta-api'
+import { sendTemplateMessage } from '@/lib/whatsapp/waha-api'
 import { decrypt } from '@/lib/whatsapp/encryption'
 import type { SendTimeParams } from '@/lib/whatsapp/template-send-builder'
 import { isMessageTemplate } from '@/lib/whatsapp/template-row-guard'
@@ -162,7 +162,7 @@ export async function POST(request: Request) {
       .select('*')
       .eq('account_id', accountId)
       .eq('name', template_name)
-      .eq('language', template_language || 'en_US')
+      .eq('language', template_language || 'pt_BR')
       .maybeSingle()
     if (rawTemplateRow && !isMessageTemplate(rawTemplateRow)) {
       return NextResponse.json(
@@ -205,7 +205,7 @@ export async function POST(request: Request) {
             accessToken,
             to: variant,
             templateName: template_name,
-            language: template_language || 'en_US',
+            language: template_language || 'pt_BR',
             template: templateRow ?? undefined,
             messageParams: recipient.messageParams,
             params: recipient.params ?? [],

@@ -2,7 +2,14 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { Loader2, Sparkles, CheckCircle2, Trash2, Eye, EyeOff } from 'lucide-react';
+import {
+  Loader2,
+  Sparkles,
+  CheckCircle2,
+  Trash2,
+  Eye,
+  EyeOff,
+} from 'lucide-react';
 import { useAuth } from '@/hooks/use-auth';
 import { canEditSettings } from '@/lib/auth/roles';
 import { Button } from '@/components/ui/button';
@@ -41,11 +48,13 @@ const HANDOFF_QUEUE = '__queue__';
 const PROVIDER_LABEL: Record<AiProvider, string> = {
   openai: 'OpenAI',
   anthropic: 'Anthropic (Claude)',
+  openrouter: 'OpenRouter',
 };
 
 const KEY_PLACEHOLDER: Record<AiProvider, string> = {
   openai: 'sk-...',
   anthropic: 'sk-ant-...',
+  openrouter: 'sk-or-v1-...',
 };
 
 export function AiConfig() {
@@ -65,6 +74,7 @@ export function AiConfig() {
   const [keyEdited, setKeyEdited] = useState(false);
   const [showKey, setShowKey] = useState(false);
   const [hasStoredKey, setHasStoredKey] = useState(false);
+  const [hasServerOpenRouterKey, setHasServerOpenRouterKey] = useState(false);
   const [embeddingsKey, setEmbeddingsKey] = useState('');
   const [embeddingsKeyEdited, setEmbeddingsKeyEdited] = useState(false);
   const [hasStoredEmbeddingsKey, setHasStoredEmbeddingsKey] = useState(false);
@@ -91,6 +101,7 @@ export function AiConfig() {
         toast.error(data.error ?? t('loadFailed'));
         return;
       }
+      setHasServerOpenRouterKey(Boolean(data.has_server_openrouter_key));
       if (data.configured) {
         setConfigured(true);
         setProvider(data.provider);
@@ -131,6 +142,7 @@ export function AiConfig() {
     const isDefaultModel =
       model === AI_PROVIDER_DEFAULT_MODEL.openai ||
       model === AI_PROVIDER_DEFAULT_MODEL.anthropic ||
+      model === AI_PROVIDER_DEFAULT_MODEL.openrouter ||
       model.trim() === '';
     if (isDefaultModel) setModel(AI_PROVIDER_DEFAULT_MODEL[next]);
   };
@@ -180,7 +192,8 @@ export function AiConfig() {
       toast.error(t('missingModel'));
       return;
     }
-    if (!configured && !keyEdited) {
+    const canUseServerKey = provider === 'openrouter' && hasServerOpenRouterKey;
+    if (!configured && !keyEdited && !canUseServerKey) {
       toast.error(t('missingApiKey'));
       return;
     }
@@ -232,8 +245,9 @@ export function AiConfig() {
 
   if (loading || profileLoading) {
     return (
-      <div className="flex items-center justify-center py-16 text-muted-foreground">
-        <Loader2 className="mr-2 h-4 w-4 animate-spin" /> {t('loadFailed')} {/* Re-using label or a global one, wait, loading is better. Let's use useTranslations from overview or just hardcode Loading... actually I should add loading to aiConfig */}
+      <div className="text-muted-foreground flex items-center justify-center py-16">
+        <Loader2 className="mr-2 h-4 w-4 animate-spin" /> {t('loadFailed')}{' '}
+        {/* Re-using label or a global one, wait, loading is better. Let's use useTranslations from overview or just hardcode Loading... actually I should add loading to aiConfig */}
         {/* Wait, I didn't add loading to aiConfig. I'll just use loading. */}
       </div>
     );
@@ -243,13 +257,10 @@ export function AiConfig() {
 
   return (
     <div>
-      <SettingsPanelHead
-        title={t('title')}
-        description={t('description')}
-      />
+      <SettingsPanelHead title={t('title')} description={t('description')} />
 
       {!canEdit && (
-        <p className="mb-4 rounded-md border border-border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+        <p className="border-border bg-muted/40 text-muted-foreground mb-4 rounded-md border px-3 py-2 text-sm">
           {t('adminOnlyConfig')}
         </p>
       )}
@@ -258,11 +269,10 @@ export function AiConfig() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
-              <Sparkles className="h-4 w-4 text-primary" /> {t('providerAndKey')}
+              <Sparkles className="text-primary h-4 w-4" />{' '}
+              {t('providerAndKey')}
             </CardTitle>
-            <CardDescription>
-              {t('encryptionNotice')}
-            </CardDescription>
+            <CardDescription>{t('encryptionNotice')}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid gap-4 sm:grid-cols-2">
@@ -277,9 +287,14 @@ export function AiConfig() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="openai">{PROVIDER_LABEL.openai}</SelectItem>
+                    <SelectItem value="openai">
+                      {PROVIDER_LABEL.openai}
+                    </SelectItem>
                     <SelectItem value="anthropic">
                       {PROVIDER_LABEL.anthropic}
+                    </SelectItem>
+                    <SelectItem value="openrouter">
+                      {PROVIDER_LABEL.openrouter}
                     </SelectItem>
                   </SelectContent>
                 </Select>
@@ -315,14 +330,18 @@ export function AiConfig() {
                         setKeyEdited(true);
                       }
                     }}
-                    placeholder={KEY_PLACEHOLDER[provider]}
+                    placeholder={
+                      provider === 'openrouter' && hasServerOpenRouterKey
+                        ? 'Configurada com segurança no servidor'
+                        : KEY_PLACEHOLDER[provider]
+                    }
                     disabled={disabled}
                     autoComplete="off"
                   />
                   <button
                     type="button"
                     onClick={() => setShowKey((s) => !s)}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    className="text-muted-foreground hover:text-foreground absolute top-1/2 right-2 -translate-y-1/2"
                     tabIndex={-1}
                   >
                     {showKey ? (
@@ -350,7 +369,7 @@ export function AiConfig() {
             <div className="space-y-2">
               <Label htmlFor="ai-embeddings-key">
                 {t('embeddingsKey')}{' '}
-                <span className="font-normal text-muted-foreground">
+                <span className="text-muted-foreground font-normal">
                   {t('optionalSemanticSearch')}
                 </span>
               </Label>
@@ -372,7 +391,7 @@ export function AiConfig() {
                 disabled={disabled}
                 autoComplete="off"
               />
-              <p className="text-xs text-muted-foreground">
+              <p className="text-muted-foreground text-xs">
                 {t('embeddingsHint', {
                   sameKeyText: provider === 'openai' ? t('sameKeyText') : '',
                 })}
@@ -384,9 +403,7 @@ export function AiConfig() {
         <Card>
           <CardHeader>
             <CardTitle className="text-base">{t('behaviour')}</CardTitle>
-            <CardDescription>
-              {t('behaviourDesc')}
-            </CardDescription>
+            <CardDescription>{t('behaviourDesc')}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
@@ -401,12 +418,12 @@ export function AiConfig() {
               />
             </div>
 
-            <div className="flex items-center justify-between gap-4 rounded-md border border-border p-3">
+            <div className="border-border flex items-center justify-between gap-4 rounded-md border p-3">
               <div>
-                <p className="text-sm font-medium text-foreground">
+                <p className="text-foreground text-sm font-medium">
                   {t('enableAssistant')}
                 </p>
-                <p className="text-xs text-muted-foreground">
+                <p className="text-muted-foreground text-xs">
                   {t('enableAssistantDesc')}
                 </p>
               </div>
@@ -417,12 +434,12 @@ export function AiConfig() {
               />
             </div>
 
-            <div className="flex items-center justify-between gap-4 rounded-md border border-border p-3">
+            <div className="border-border flex items-center justify-between gap-4 rounded-md border p-3">
               <div>
-                <p className="text-sm font-medium text-foreground">
+                <p className="text-foreground text-sm font-medium">
                   {t('autoReply')}
                 </p>
-                <p className="text-xs text-muted-foreground">
+                <p className="text-muted-foreground text-xs">
                   {t('autoReplyDesc')}
                 </p>
               </div>
@@ -436,7 +453,7 @@ export function AiConfig() {
             <div className="flex items-center justify-between gap-4">
               <div>
                 <Label htmlFor="ai-max">{t('maxAutoReplies')}</Label>
-                <p className="text-xs text-muted-foreground">
+                <p className="text-muted-foreground text-xs">
                   {t('maxAutoRepliesDesc')}
                 </p>
               </div>
@@ -448,7 +465,7 @@ export function AiConfig() {
                 value={maxPerConversation}
                 onChange={(e) =>
                   setMaxPerConversation(
-                    Math.min(20, Math.max(1, Number(e.target.value) || 1)),
+                    Math.min(20, Math.max(1, Number(e.target.value) || 1))
                   )
                 }
                 disabled={disabled || !autoReplyEnabled}
@@ -458,7 +475,7 @@ export function AiConfig() {
 
             <div className="space-y-2">
               <Label htmlFor="ai-handoff">{t('handoffTo')}</Label>
-              <p className="text-xs text-muted-foreground">
+              <p className="text-muted-foreground text-xs">
                 {t('handoffToDesc')}
               </p>
               <Select

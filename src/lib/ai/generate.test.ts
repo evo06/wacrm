@@ -99,9 +99,11 @@ describe('generateReply — OpenAI', () => {
   it('maps a 401 to an invalid_key AiError', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn().mockResolvedValue(
-        errResponse(401, { error: { message: 'Incorrect API key' } }),
-      ),
+      vi
+        .fn()
+        .mockResolvedValue(
+          errResponse(401, { error: { message: 'Incorrect API key' } }),
+        ),
     )
 
     await expect(
@@ -116,7 +118,11 @@ describe('generateReply — OpenAI', () => {
   it('throws on an empty completion', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn().mockResolvedValue(okResponse({ choices: [{ message: { content: '' } }] })),
+      vi
+        .fn()
+        .mockResolvedValue(
+          okResponse({ choices: [{ message: { content: '' } }] }),
+        ),
     )
     await expect(
       generateReply({
@@ -125,6 +131,41 @@ describe('generateReply — OpenAI', () => {
         messages: [{ role: 'user', content: 'Hi' }],
       }),
     ).rejects.toBeInstanceOf(AiError)
+  })
+})
+
+describe('generateReply — OpenRouter', () => {
+  it('calls OpenRouter with server attribution and parses the reply', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      okResponse({
+        choices: [{ message: { content: 'Olá! Como posso ajudar?' } }],
+        usage: { prompt_tokens: 20, completion_tokens: 7, total_tokens: 27 },
+      }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const res = await generateReply({
+      config: config({
+        provider: 'openrouter',
+        model: 'openai/gpt-5.4-mini',
+        apiKey: 'sk-or-test',
+      }),
+      systemPrompt: 'sys',
+      messages: [{ role: 'user', content: 'Olá' }],
+    })
+
+    expect(res).toEqual({
+      text: 'Olá! Como posso ajudar?',
+      handoff: false,
+      usage: { promptTokens: 20, completionTokens: 7, totalTokens: 27 },
+    })
+    const [url, opts] = fetchMock.mock.calls[0]
+    expect(url).toContain('openrouter.ai/api/v1/chat/completions')
+    expect(opts.headers.Authorization).toBe('Bearer sk-or-test')
+    expect(opts.headers['X-OpenRouter-Title']).toBeTruthy()
+    const body = JSON.parse(opts.body)
+    expect(body.model).toBe('openai/gpt-5.4-mini')
+    expect(body.messages[0]).toEqual({ role: 'system', content: 'sys' })
   })
 })
 
@@ -159,9 +200,11 @@ describe('generateReply — Anthropic', () => {
   it('detects handoff in the model output', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn().mockResolvedValue(
-        okResponse({ content: [{ type: 'text', text: '[[HANDOFF]]' }] }),
-      ),
+      vi
+        .fn()
+        .mockResolvedValue(
+          okResponse({ content: [{ type: 'text', text: '[[HANDOFF]]' }] }),
+        ),
     )
     const res = await generateReply({
       config: config({ provider: 'anthropic' }),
@@ -175,7 +218,9 @@ describe('generateReply — Anthropic', () => {
   it('drops a leading assistant turn so the payload starts on the customer', async () => {
     const fetchMock = vi
       .fn()
-      .mockResolvedValue(okResponse({ content: [{ type: 'text', text: 'ok' }] }))
+      .mockResolvedValue(
+        okResponse({ content: [{ type: 'text', text: 'ok' }] }),
+      )
     vi.stubGlobal('fetch', fetchMock)
 
     await generateReply({

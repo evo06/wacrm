@@ -28,15 +28,23 @@
     "node": ">=20.0.0"
   },
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev --port 3002",
     "build": "next build",
-    "start": "next start",
+    "start": "next start --port 3002",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "waha:up": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/waha-selfhost.ps1 up",
+    "waha:down": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/waha-selfhost.ps1 down",
+    "waha:status": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/waha-selfhost.ps1 status",
+    "waha:logs": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/waha-selfhost.ps1 logs",
+    "supabase:up": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/supabase-selfhost.ps1 up",
+    "supabase:down": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/supabase-selfhost.ps1 down",
+    "supabase:status": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/supabase-selfhost.ps1 status",
+    "supabase:logs": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/supabase-selfhost.ps1 logs"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",
@@ -71,6 +79,7 @@
     "eslint-config-next": "16.2.6",
     "prettier": "^3.9.1",
     "prettier-plugin-tailwindcss": "^0.8.0",
+    "supabase": "^2.109.1",
     "tailwindcss": "^4",
     "typescript": "^6",
     "vitest": "^4.1.9"

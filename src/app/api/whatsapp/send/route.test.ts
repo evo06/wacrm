@@ -146,7 +146,7 @@ vi.mock('@/lib/whatsapp/encryption', () => ({
 const { sendTemplateMessage } = vi.hoisted(() => ({
   sendTemplateMessage: vi.fn(async () => ({ messageId: 'wamid-1' })),
 }))
-vi.mock('@/lib/whatsapp/meta-api', () => ({
+vi.mock('@/lib/whatsapp/waha-api', () => ({
   sendTemplateMessage,
   sendTextMessage: vi.fn(),
   sendMediaMessage: vi.fn(),

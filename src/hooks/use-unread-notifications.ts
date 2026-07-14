@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { LOCAL_AUTH_CLIENT_ENABLED } from "@/lib/auth/local-mode";
 import type { Notification } from "@/types";
 
 /**
@@ -16,6 +17,8 @@ export function useUnreadNotifications(): number {
   const [count, setCount] = useState(0);
 
   useEffect(() => {
+    if (LOCAL_AUTH_CLIENT_ENABLED) return;
+
     const supabase = createClient();
     let cancelled = false;
 

@@ -170,7 +170,7 @@ function blankConfig(type: AutomationStepType): Record<string, unknown> {
     case "send_list":
       return toStepConfig(blankListPayload())
     case "send_template":
-      return { template_name: "", language: "en_US" }
+      return { template_name: "", language: "pt_BR" }
     case "add_tag":
     case "remove_tag":
       return { tag_id: "" }
@@ -587,7 +587,7 @@ function SendTemplateFields({
   const toValue = (name: string, lang: string) => `${name}::${lang}`
   const current = templateName ? toValue(templateName, language) : ""
   const hasMatch = templates.some(
-    (t) => toValue(t.name, t.language ?? "en_US") === current,
+    (t) => toValue(t.name, t.language ?? "pt_BR") === current,
   )
 
   return (
@@ -602,7 +602,7 @@ function SendTemplateFields({
       >
         <option value="">{t("templates.select")}</option>
         {templates.map((tmpl) => {
-          const lang = tmpl.language ?? "en_US"
+          const lang = tmpl.language ?? "pt_BR"
           return (
             <option key={tmpl.id} value={toValue(tmpl.name, lang)}>
               {tmpl.name} ({lang})
@@ -851,7 +851,7 @@ function TriggerCard({
             {type === "tag_added" && (
               <div>
                 <label className="mb-1 block text-xs font-medium text-muted-foreground">
-                  Tag
+                  {t("config.tagLabel")}
                 </label>
                 <TagSelect
                   value={(config.tag_id as string) ?? ""}
@@ -866,7 +866,7 @@ function TriggerCard({
                   {t("schedule")}
                 </label>
                 <Input
-                  placeholder="Cron expression or HH:mm"
+                  placeholder="Expressão cron ou HH:mm"
                   value={(config.schedule as string) ?? ""}
                   onChange={(e) =>
                     onConfigChange({ ...config, schedule: e.target.value })
@@ -1154,7 +1154,7 @@ function StepRenderer({
                   onClick={() => props.deleteStepAt(path)}
                 >
                   <Trash2 className="h-3.5 w-3.5" />
-                  {t("delete", { defaultValue: "Delete" })}
+                  {t("delete", { defaultValue: "Excluir" })}
                 </Button>
               </div>
             </div>
@@ -1483,7 +1483,7 @@ function StepEditor({
     case "close_conversation":
       return (
         <p className="text-xs text-muted-foreground">
-          {t("config.closeConversationHint", { defaultValue: "Sets the conversation status to \"closed\". No configuration needed." })}
+          {t("config.closeConversationHint", { defaultValue: "Define o status da conversa como \"encerrada\". Nenhuma configuração é necessária." })}
         </p>
       )
     default:

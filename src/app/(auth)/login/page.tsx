@@ -4,7 +4,6 @@ import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
-import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -16,6 +15,9 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { MessageSquare, UsersRound } from "lucide-react";
+import { LOCAL_AUTH_CLIENT_ENABLED } from "@/lib/auth/local-mode";
+
+const localAuthEnabled = LOCAL_AUTH_CLIENT_ENABLED;
 
 // `useSearchParams` opts the component out of static prerendering
 // unless it sits under a Suspense boundary. We split the form into
@@ -38,33 +40,64 @@ function LoginPageInner() {
   const inviteToken = searchParams.get("invite");
   const t = useTranslations("LoginPage");
 
-  const [email, setEmail] = useState("");
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const router = useRouter();
-  const supabase = createClient();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setLoading(true);
 
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
+    if (localAuthEnabled) {
+      try {
+        const response = await fetch("/api/auth/local/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username: identifier, password }),
+        });
+        const result = (await response.json()) as { error?: string };
+        if (!response.ok) {
+          setError(result.error ?? "Não foi possível entrar.");
+          setLoading(false);
+          return;
+        }
 
-    if (error) {
-      setError(error.message);
+        router.replace("/dashboard");
+        router.refresh();
+        return;
+      } catch {
+        setError("Não foi possível acessar o serviço local.");
+        setLoading(false);
+        return;
+      }
+    }
+
+    try {
+      const response = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: identifier, password }),
+      });
+      const result = (await response.json()) as { error?: string };
+
+      if (!response.ok) {
+        setError(result.error ?? "Não foi possível entrar.");
+        setLoading(false);
+        return;
+      }
+    } catch {
+      setError("Não foi possível acessar o serviço de autenticação.");
       setLoading(false);
       return;
     }
 
     if (inviteToken) {
-      router.push(`/join/${encodeURIComponent(inviteToken)}`);
+      window.location.assign(`/join/${encodeURIComponent(inviteToken)}`);
     } else {
-      router.push("/dashboard");
+      window.location.assign("/dashboard");
     }
   };
 
@@ -80,16 +113,27 @@ function LoginPageInner() {
             )}
           </div>
           <CardTitle className="text-xl text-foreground">
-            {inviteToken ? t('titleAccept') : t('titleWelcome')}
+            {localAuthEnabled
+              ? "Acesso local"
+              : inviteToken
+                ? t('titleAccept')
+                : t('titleWelcome')}
           </CardTitle>
           <CardDescription className="text-muted-foreground">
-            {inviteToken
-              ? t('descAccept')
-              : t('descWelcome')}
+            {localAuthEnabled
+              ? "Entre com o usuário e a senha desta instalação."
+              : inviteToken
+                ? t('descAccept')
+                : t('descWelcome')}
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleLogin} className="flex flex-col gap-4">
+          <form
+            action="/api/auth/login"
+            method="post"
+            onSubmit={handleLogin}
+            className="flex flex-col gap-4"
+          >
             {error && (
               <div className="rounded-lg border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400">
                 {error}
@@ -97,15 +141,17 @@ function LoginPageInner() {
             )}
 
             <div className="flex flex-col gap-2">
-              <Label htmlFor="email" className="text-muted-foreground">
-                {t('emailLabel')}
+              <Label htmlFor="identifier" className="text-muted-foreground">
+                {localAuthEnabled ? "Usuário" : t('emailLabel')}
               </Label>
               <Input
-                id="email"
-                type="email"
-                placeholder={t('emailPlaceholder')}
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                id="identifier"
+                name="email"
+                type={localAuthEnabled ? "text" : "email"}
+                autoComplete="username"
+                placeholder={localAuthEnabled ? "admin" : t('emailPlaceholder')}
+                value={identifier}
+                onChange={(e) => setIdentifier(e.target.value)}
                 required
                 className="border-border bg-muted text-foreground placeholder:text-muted-foreground focus-visible:border-primary focus-visible:ring-primary/20"
               />
@@ -116,16 +162,20 @@ function LoginPageInner() {
                 <Label htmlFor="password" className="text-muted-foreground">
                   {t('passwordLabel')}
                 </Label>
-                <Link
-                  href="/forgot-password"
-                  className="text-sm text-primary hover:text-primary/80"
-                >
-                  {t('forgotPassword')}
-                </Link>
+                {!localAuthEnabled ? (
+                  <Link
+                    href="/forgot-password"
+                    className="text-sm text-primary hover:text-primary/80"
+                  >
+                    {t('forgotPassword')}
+                  </Link>
+                ) : null}
               </div>
               <Input
                 id="password"
+                name="password"
                 type="password"
+                autoComplete="current-password"
                 placeholder={t('passwordPlaceholder')}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -139,23 +189,31 @@ function LoginPageInner() {
               disabled={loading}
               className="mt-2 h-10 w-full bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
             >
-              {loading ? t('signingIn') : t('signIn')}
+              {loading
+                ? localAuthEnabled
+                  ? "Entrando..."
+                  : t('signingIn')
+                : localAuthEnabled
+                  ? "Entrar"
+                  : t('signIn')}
             </Button>
           </form>
 
-          <p className="mt-6 text-center text-sm text-muted-foreground">
-            {t('noAccount')}{" "}
-            <Link
-              href={
-                inviteToken
-                  ? `/signup?invite=${encodeURIComponent(inviteToken)}`
-                  : "/signup"
-              }
-              className="text-primary hover:text-primary/80"
-            >
-              {t('createAccount')}
-            </Link>
-          </p>
+          {!localAuthEnabled ? (
+            <p className="mt-6 text-center text-sm text-muted-foreground">
+              {t('noAccount')}{" "}
+              <Link
+                href={
+                  inviteToken
+                    ? `/signup?invite=${encodeURIComponent(inviteToken)}`
+                    : "/signup"
+                }
+                className="text-primary hover:text-primary/80"
+              >
+                {t('createAccount')}
+              </Link>
+            </p>
+          ) : null}
         </CardContent>
       </Card>
     </div>

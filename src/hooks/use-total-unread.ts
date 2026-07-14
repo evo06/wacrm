@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { LOCAL_AUTH_CLIENT_ENABLED } from "@/lib/auth/local-mode";
 import type { Conversation } from "@/types";
 
 /**
@@ -20,6 +21,8 @@ export function useTotalUnread(): number {
   const countsRef = useRef<Map<string, number>>(new Map());
 
   useEffect(() => {
+    if (LOCAL_AUTH_CLIENT_ENABLED) return;
+
     const supabase = createClient();
     let cancelled = false;
 
