@@ -51,3 +51,24 @@ jobs:
 
       - name: Build
         run: npm run build
+
+  graphify:
+    name: Generate code knowledge graph
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v7
+
+      - name: Install Graphify
+        run: uv tool install graphifyy
+
+      - name: Extract knowledge graph
+        run: graphify extract . --code-only --no-cluster
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: graphify-graph
+          path: graphify-out/
+          retention-days: 30
